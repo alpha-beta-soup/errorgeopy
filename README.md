@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/alpha-beta-soup/errorgeopy.svg?branch=master)](https://travis-ci.org/alpha-beta-soup/errorgeopy)
+
 # errorgeopy
 Python geocoding in a disagreeing world
 
