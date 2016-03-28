@@ -1,10 +1,11 @@
 language: python
 python:
     - 3.4
+sudo: required
 virtualenv:
     system_site_packages: true
 before_isntall:
-    - apt-get install gfortran libblas-dev liblapack-dev
+    - sudo apt-get install gfortran libblas-dev liblapack-dev
 install:
     - pip install -r requirements.txt
 script: nosetests
