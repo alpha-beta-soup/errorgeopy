@@ -1,44 +1,63 @@
+import os
 import copy
 import itertools
 
+import yaml
 import geopy
 import numpy as np
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, MultiPoint
+from scipy.spatial import Delaunay
 
-GEOCODERS = {
-    'nominatim': {
-        # 'format_string': "%s",
-        # 'view_box': None,
-        # 'country_bias': 'New Zealand',
-        # 'proxies': None,
-        # 'timeout': None,
-        # 'domain': 'nominatim.openstreetmap.org',
-        # 'scheme': 'http',
-        # 'user_agent': None,
-        'geocode': {
-            'exactly_one': False
-        },
-        'reverse': {
-            'exactly_one': False
-        }
-    },
-    'GeocoderDotUS': {
-        'geocode': {
-            'exactly_one': False
-        }
-    },
-    'ArcGIS': {
-        'geocode': {
-            'exactly_one': False
-        }
-    },
-    'databc': {
-        'geocode': {
-            'max_results': 25,
-            'exactly_one': False
-        }
+def sq_norm(v):
+    '''Squared norm'''
+    return np.linalg.norm(v)**2
+
+def circumcircle(points, simplex):
+    '''Computes the circumcentre and circumradius of a triangle:
+    https://en.wikipedia.org/wiki/Circumscribed_circle#Circumcircle_equations
+    '''
+    A = [points[simplex[k]] for k in range(3)]
+    M = np.asarray(
+        [[1.0]*4] + [[sq_norm(A[k]), A[k][0], A[k][1], 1.0] for k in range(3)],
+        dtype=np.float32
+    )
+    S = np.array(
+        [0.5*np.linalg.det(M[1:,[0,2,3]]), -0.5*np.linalg.det(M[1:,[0,1,3]])]
+    )
+    a = np.linalg.det(M[1:,1:])
+    b = np.linalg.det(M[1:,[0,1,2]])
+    centre, radius = S/a, np.sqrt(b/a+sq_norm(S)/a**2)
+    return centre, radius
+
+def get_alpha_complex(alpha, points, simplexes):
+    '''
+    alpha: the paramter for the alpha shape
+    points: data points
+    simplexes: the list of indices that define 2-simplexes in the Delaunay
+               triangulation
+    '''
+    return filter(
+        lambda simplex: circumcircle(points, simplex)[1]<alpha, simplexes
+    )
+
+def concave_hull(points, alpha):
+    delunay_args = {
+        'furthest_site': False,
+        'incremental': False,
+        'qhull_options': None
     }
-}
+    triangulation = Delaunay(np.array(points))
+    alpha_complex = get_alpha_complex(
+        alpha, points, triangulation.simplices
+    )
+    X, Y = [], []
+    for s in triangulation.simplices:
+        X.append([points[s[k]][0] for k in [0,1,2,0]])
+        Y.append([points[s[k]][1] for k in [0,1,2,0]])
+    poly = Polygon(list(zip(X[0],Y[0])))
+    for i in range(1,len(X)):
+        poly = poly.union(Polygon(list(zip(X[i],Y[i]))))
+    return poly
 
 # https://en.wikibooks.org/wiki/Algorithm_Implementation/Geometry/Convex_hull/Monotone_chain#Python
 def convex_hull(points):
@@ -80,7 +99,7 @@ def convex_hull(points):
 
     # Concatenation of the lower and upper hulls gives the convex hull.
     # Last point of each list is omitted because it is repeated at the beginning of the other list.
-    return lower[:-1] + upper[:-1]
+    return Polygon(lower[:-1] + upper[:-1])
 
 class Geocoder(object):
     def __init__(self, geocoder_name, config):
@@ -91,47 +110,79 @@ class Geocoder(object):
         self.name = geocoder_name
 
 class Geocoders(object):
-    def __init__(self, geocoders):
-        self.config = geocoders
+    def __init__(self, config):
+        self.config = config
+        if not isinstance(self.config, dict):
+            raise NotImplementedError
         self.geocoders = self.get_geocoders()
+        self.pts = None
         self.convex_hull = None
         self.concave_hull = None
+        self.multipoint = None
+        self.is_polygonisable = None
 
-    def get_geocoders(self):
-        return [Geocoder(gc, self.config[gc]) for gc in self.config]
+    def _get_points_from_resultset(self, results):
+        if not results:
+            self.is_polygonisable = False
+            return None
+        if not isinstance(results, list):
+            results = [results]
+        self.is_polygonisable = True if len(results) > 2 else False
+        return [(r.longitude, r.latitude,) for r in results]
 
     def geocode(self, query):
         results = []
         for geocoder in self.geocoders:
             try:
                 result = geocoder.geocoder.geocode(query, **geocoder.geocode_kwargs)
-            except Exception as exc:
-                print(exc)
+            except geopy.exc.GeocoderTimedOut as timeout:
+                print(geocoder.name, timeout)
                 continue
             if not result:
-                return None
+                print(geocoder.name, 'no result')
+                continue
             for res in result:
+                if not res:
+                    continue
+                print(geocoder.name, repr(res))
                 results.append(res)
-        self.convex_hull = self._get_convex_hull(results)
-        self.concave_hull = self._get_concave_hull(results)
-
+        self.pts = self._get_points_from_resultset(results)
         return results
 
-    def _get_concave_hull(self, results):
-        return
+    def get_geocoders(self):
+        return [Geocoder(gc, self.config[gc]) for gc in self.config]
 
-    def _get_convex_hull(self, results):
-        if not results:
+    def get_multipoint(self):
+        if not self.pts:
             return None
-        if len(results) < 3:
+        return MultiPoint(self.pts)
+
+    def get_clusters(self, threshold=200):
+        '''Returns one or more clusters of result addresses, or None if there
+        are no results. The members of the returned array of Cluster object
+        include the constiuent addresses, and the result is sorted with the
+        first value being the largest cluster.'''
+        raise NotImplementedError
+
+    def get_concave_hull(self, alpha=0.15):
+        if not self.is_polygonisable:
             return None
-        pts = [(r.longitude, r.latitude,) for r in results]
-        return Polygon(convex_hull(pts))
+        return concave_hull(self.pts, alpha)
+
+    def get_convex_hull(self):
+        if not self.is_polygonisable:
+            return None
+        return convex_hull(self.pts)
 
 
 if __name__ == '__main__':
-    gcs = Geocoders(GEOCODERS)
-    test = 'Nelson Street, Vancouver, BC, Canada'
-    result = gcs.geocode(test)
-    if gcs.convex_hull:
-        print(gcs.convex_hull.wkt)
+    config = os.path.abspath(os.path.join(
+        os.path.dirname( __file__ ), '..', 'configuration.yml'
+    ))
+    with open(config, 'r') as geocoders:
+        gcs = Geocoders(yaml.load(geocoders))
+        test = '66 Great South Road, Auckland, New Zealand'
+        result = gcs.geocode(test)
+        print(gcs.get_convex_hull().wkt)
+        print(gcs.get_concave_hull().wkt)
+        print(gcs.get_multipoint().wkt)

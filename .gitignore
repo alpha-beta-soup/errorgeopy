@@ -61,5 +61,8 @@ target/
 #Ipython Notebook
 .ipynb_checkpoints
 
-# virtualenvironmen
+# virtual environment
 venv/
+
+# Geocoding API tokens and settings
+configuration.yml
