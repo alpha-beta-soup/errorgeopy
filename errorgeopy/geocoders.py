@@ -5,8 +5,9 @@ import itertools
 import yaml
 import geopy
 import numpy as np
-from shapely.geometry import Polygon, MultiPoint
+from shapely.geometry import Point, Polygon, MultiPoint
 from scipy.spatial import Delaunay
+from sklearn.cluster import MeanShift, estimate_bandwidth
 
 def sq_norm(v):
     '''Squared norm'''
@@ -157,12 +158,33 @@ class Geocoders(object):
             return None
         return MultiPoint(self.pts)
 
-    def get_clusters(self, threshold=200):
+    def get_clusters(self, bandwidth=None):
         '''Returns one or more clusters of result addresses, or None if there
         are no results. The members of the returned array of Cluster object
         include the constiuent addresses, and the result is sorted with the
-        first value being the largest cluster.'''
-        raise NotImplementedError
+        first value being the largest cluster. Uses a mean-shift clustering
+        algorithm. If bandwidth is None, a value is detected automatically
+        from the input using estimate_bandwidth'''
+        if not self.pts:
+            return None
+        X = np.array(self.pts)
+        if not bandwidth:
+            bandwidth = estimate_bandwidth(X, quantile=0.3)
+        ms = MeanShift(bandwidth=bandwidth, bin_seeding=True)
+        ms.fit(X)
+        labels = ms.labels_
+        cluster_centres = ms.cluster_centers_
+        clusters = {} # TODO replace with actual object, refactor
+        for i, cc in enumerate(ms.cluster_centers_):
+            clusters[i] = {}
+            clusters[i]['centre'] = Point(cc).wkt
+            clusters[i]['members'] = []
+            for j, label in enumerate(labels):
+                if not label == i:
+                    continue
+                clusters[i]['members'].append(self.pts[j])
+        print("Estimated clusters: %d" % len(clusters))
+        return clusters
 
     def get_concave_hull(self, alpha=0.15):
         if not self.is_polygonisable:
@@ -186,3 +208,4 @@ if __name__ == '__main__':
         print(gcs.get_convex_hull().wkt)
         print(gcs.get_concave_hull().wkt)
         print(gcs.get_multipoint().wkt)
+        print(gcs.get_clusters())
