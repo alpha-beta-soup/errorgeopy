@@ -1,7 +1,7 @@
 # errorgeopy
 Python geocoding in a disagreeing world
 
-Wraps [geopy](https://github.com/geopy/geopy) geocoding to expose a simple way to use multiple providers of geocoding services simultaneously, and provide a report of the ensuing spatial uncertainty in the final location.
+Wraps [geopy](https://github.com/geopy/geopy) geocoding to expose a simple way to use multiple providers of geocoding services simultaneously (with `multiprocessing`), and provide a report of the ensuing spatial uncertainty in the final location.
 
 0. Configure your desired/allowed geocoding providers (`config.yml`).
 1. Geocode an address using the errorgeopy `geocode` wrapper.
