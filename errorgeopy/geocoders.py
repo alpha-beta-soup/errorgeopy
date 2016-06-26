@@ -6,7 +6,6 @@ import geopy
 from shapely.geometry import MultiPoint
 
 import errorgeopy.utils as utils
-import errorgeopy.error as error
 
 def _geocode(geocoder, query, kwargs={}, skip_timeouts=True):
     '''
@@ -80,6 +79,11 @@ class Location(object):
             return None
         return utils.convex_hull(self.points)
 
+    def get_clusters(self):
+        if not self.points:
+            return None
+        return utils.get_clusters(self.location)
+
 
 class GeocoderPool(object):
     def __init__(self, config):
@@ -88,7 +92,6 @@ class GeocoderPool(object):
             # TODO GeocoderPool as just an array of configured geopy geocoders
             raise NotImplementedError
         self.geocoders = self.get_geocoders()
-        self.location = None
 
     def geocode(self, query):
         pool = ThreadPool()
@@ -103,11 +106,11 @@ class GeocoderPool(object):
         pool.close()
         pool.join()
         locations = [item for sublist in results for item in sublist]
-        self.location = Location(locations)
-        return self.location
+        return Location(locations)
 
     def get_geocoders(self):
         return [Geocoder(gc, self.config[gc]) for gc in self.config]
+
 
 if __name__ == '__main__':
     import yaml
@@ -122,4 +125,4 @@ if __name__ == '__main__':
         print(location.get_convex_hull().wkt)
         print(location.get_concave_hull().wkt)
         print(location.get_multipoint().wkt)
-        print(error.get_clusters(location.points))
+        print(location.get_clusters())

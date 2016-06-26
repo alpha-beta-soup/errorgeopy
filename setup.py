@@ -15,7 +15,7 @@ config = {
     'author_email': 'richard.m.law@gmail.com',
     'url': 'https://github.com/alpha-beta-soup/errorgeopy',
     'download_url': 'https://github.com/alpha-beta-soup/errorgeopy/archive/master.zip',
-    'requires': ['nose','numpy','scipy','geopy','pyyaml','shapely','pyhull','sklearn'],
+    'requires': ['nose','numpy','scipy','geopy','shapely','pyhull','sklearn'],
     'scripts': [],
     'classifiers': [
         "Programming Language :: Python",
