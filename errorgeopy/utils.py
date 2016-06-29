@@ -1,9 +1,32 @@
 import numpy as np
 
+from geopy.point import Point as GeopyPoint
 from shapely.geometry import Point, Polygon
 from scipy.spatial import Delaunay
 from sklearn.cluster import MeanShift, estimate_bandwidth
 from sklearn.preprocessing import Imputer
+
+def geopy_point_to_shapely_point(point):
+    '''
+    Converts a geopy.point.Point to a shapely.geometry.Point
+    '''
+    if not isinstance(point, GeopyPoint):
+        raise TypeError
+    return Point(iter(point))
+
+def array_geopy_points_to_shapely_points(array_of_points):
+    '''
+    Converts an array of geopy.point.Point objects to an array of
+    shapely.geometry.Point objects
+    '''
+    return [geopy_point_to_shapely_point(p) for p in array_of_points]
+
+def array_geopy_points_to_xyz_tuples(array_of_points):
+    '''
+    Converts an array of geopy.point.Point objects to an array of
+    (x, y, z) tuples.
+    '''
+    return [geopy_point_to_shapely_point(p).coords[0] for p in array_of_points]
 
 def sq_norm(v):
     '''Squared norm'''
@@ -37,8 +60,8 @@ def get_alpha_complex(alpha, points, simplexes):
         lambda simplex: circumcircle(points, simplex)[1]<alpha, simplexes
     )
 
-def concave_hull(points, alpha):
-    delunay_args = {
+def concave_hull(points, alpha, delunay_args=None):
+    delunay_args = delunay_args or {
         'furthest_site': False,
         'incremental': False,
         'qhull_options': None
@@ -56,29 +79,31 @@ def concave_hull(points, alpha):
         poly = poly.union(Polygon(list(zip(X[i],Y[i]))))
     return poly
 
+def cross(o, a, b):
+    '''
+    2D cross product of OA and OB vectors, i.e. z-component of their 3D cross
+    product.
+    Returns a positive value, if OAB makes a counter-clockwise turn,
+    negative for clockwise turn, and zero if the points are collinear.
+    '''
+    return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
 # https://en.wikibooks.org/wiki/Algorithm_Implementation/Geometry/Convex_hull/Monotone_chain#Python
 def convex_hull(points):
-    """Computes the convex hull of a set of 2D points.
+    '''
+    Computes the convex hull of a set of 2D points.
 
-    Input: an iterable sequence of hashable (x, y) pairs representing the points.
-    Output: a list of vertices of the convex hull in counter-clockwise order,
-      starting from the vertex with the lexicographically smallest coordinates.
-    Implements Andrew's monotone chain algorithm. O(n log n) complexity.
-    """
-
-    # Sort the points lexicographically (tuples are compared lexicographically).
-    # Remove duplicates to detect the case we have just one unique point.
+    Takes an iterable sequence of hashable (x, y, ...) tuples representing the
+    points. Only the (x, y) pairs are used, so output is in two-dimensions.
+    Outputs a shapely.geometry.Polygon representing the convex hull, in
+    counter-clockwise order, starting from the vertex with the lexicographically
+    smallest coordinates. Implements Andrew's monotone chain algorithm.
+    O(n log n) complexity.
+    '''
+    # Convert, sort the points lexicographically, and remove duplicates
     points = sorted(set(points))
-
-    # Boring case: no points or a single point, possibly repeated multiple times.
     if len(points) <= 1:
         return points
-
-    # 2D cross product of OA and OB vectors, i.e. z-component of their 3D cross product.
-    # Returns a positive value, if OAB makes a counter-clockwise turn,
-    # negative for clockwise turn, and zero if the points are collinear.
-    def cross(o, a, b):
-        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
 
     # Build lower hull
     lower = []
@@ -95,7 +120,10 @@ def convex_hull(points):
         upper.append(p)
 
     # Concatenation of the lower and upper hulls gives the convex hull.
-    # Last point of each list is omitted because it is repeated at the beginning of the other list.
+    # Last point of each list is omitted because it is repeated at the
+    # beginning of the other list.
+    # Input to Polygon is a list of vertices in counter-clockwise order,
+    # starting at the point with the lexicographically smallest coordinates
     return Polygon(lower[:-1] + upper[:-1])
 
 def get_clusters(pts, bandwidth=None):

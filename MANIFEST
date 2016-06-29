@@ -3,6 +3,5 @@ LICENSE
 README.md
 setup.py
 errorgeopy/__init__.py
-errorgeopy/error.py
 errorgeopy/geocoders.py
 errorgeopy/utils.py

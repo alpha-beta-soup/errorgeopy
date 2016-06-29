@@ -1,11 +1,16 @@
 import os
+import collections
+import warnings
 from multiprocessing.dummy import Pool as ThreadPool
 from itertools import repeat
 
 import geopy
+from geopy.geocoders import Nominatim, GoogleV3 # Default GeocoderPool
 from shapely.geometry import MultiPoint
 
 import errorgeopy.utils as utils
+
+DEFAULT_GEOCODER_POOL = [Nominatim(), GoogleV3()]
 
 def _geocode(geocoder, query, kwargs={}, skip_timeouts=True):
     '''
@@ -30,7 +35,7 @@ def _geocode(geocoder, query, kwargs={}, skip_timeouts=True):
         results.append(res)
     return results
 
-
+# TODO is it possible to use/inherit a geopy class?
 class Geocoder(object):
     def __init__(self, geocoder_name, config):
         self._class = geopy.get_geocoder_for_service(geocoder_name)
@@ -41,57 +46,176 @@ class Geocoder(object):
         self.geocoder = self._class(**config)
         self.name = geocoder_name
 
-
 class Location(object):
     def __init__(self, locations):
-        assert locations
-        if not isinstance(locations, list):
-            self.locations = [locations]
-        else:
-            self.locations = locations
-        self.points = self.get_points()
+        '''
+        Contains an array of parsed geocoder responses, each of which are
+        geopy.Location objects.
+        '''
+        if not locations:
+            return None
+        self._locations = locations
+
+    def __unicode__(self):
+        return '\n'.join(self.addresses)
+
+    def __str__(self):
+        return self.__unicode__()
+
+    def __repr__(self):
+        return '\n'.join([repr(l) for l in self.locations])
+
+    def __getitem__(self, index):
+        return self.locations[index]
+
+    def __setitem__(self, index, value):
+        if not isinstance(value, geopy.Location):
+            raise TypeError
+        self.locations[index] = value
+
+    def __eq__(self, other):
+        if not isinstance(other, Location):
+            return False
+        for l, o in zip(self.locations, other):
+            if not l == o:
+                return False
+        return True
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __len__(self):
+        return len(self.locations)
 
     def _polygonisable(self):
         if not self.locations or len(self.locations) <= 1:
             return False
         return True
 
-    def get_points(self):
-        return [(r.longitude, r.latitude,) for r in self.locations]
+    @property
+    def locations(self):
+        if not isinstance(self._locations, list):
+            return [self._locations]
+        else:
+            return self._locations
 
-    def get_multipoint(self):
+    @property
+    def addresses(self):
+        '''
+        Convenience method to get geopy.Location.address properties for all
+        candidate locations as an array
+        '''
+        return [l.address for l in self.locations]
+
+    @property
+    def points(self):
+        '''
+        Returns an array of geopy.Point objects representing the candidate
+        locations. These are geodetic points, with latitude, longitude, and
+        altitude (in kilometres), default 0.
+        '''
+        return [l.point for l in self.locations]
+
+    def _shapely_points(self):
+        return utils.array_geopy_points_to_shapely_points(self.points)
+
+    def _tuple_points(self):
+        return utils.array_geopy_points_to_xyz_tuples(self.points)
+
+    @property
+    def multipoint(self):
+        '''
+        Returns a shapely.geometry.MultiPoint of the Location
+        '''
         if not self.points:
             return None
-        return MultiPoint(self.points)
+        return MultiPoint(self._shapely_points())
 
-    def get_multipoint(self):
-        if not self.points:
-            return None
-        return MultiPoint(self.points)
-
-    def get_concave_hull(self, alpha=0.15):
+    @property
+    def concave_hull(self, alpha=0.15):
+        '''
+        Returns a concave hull of the Location
+        '''
+        # TODO document return value
         if not self._polygonisable():
             return None
-        return utils.concave_hull(self.points, alpha)
+        return utils.concave_hull(
+            [p[0:2] for p in self._tuple_points()], alpha
+        )
 
-    def get_convex_hull(self):
+    @property
+    def convex_hull(self):
+        '''
+        Returns a convex hull of the Location
+        '''
+        # TODO document return value
         if not self._polygonisable():
             return None
-        return utils.convex_hull(self.points)
+        return utils.convex_hull(self._tuple_points())
 
-    def get_clusters(self):
+    @property
+    def clusters(self):
+        '''
+        Returns clusters that have been identified in the Location's candidate
+        addresses
+        '''
+        # TODO document and maybe sub-class the return value
         if not self.points:
             return None
-        return utils.get_clusters(self.location)
-
+        return utils.get_clusters(self._tuple_points())
 
 class GeocoderPool(object):
-    def __init__(self, config):
-        self.config = config
-        if not isinstance(self.config, dict):
-            # TODO GeocoderPool as just an array of configured geopy geocoders
-            raise NotImplementedError
-        self.geocoders = self.get_geocoders()
+    def __init__(self, config=None, geocoders=None):
+        '''
+        A "pool" of geopy.geocoders, created using a configuration
+        '''
+        self._config = config
+        self._geocoders = DEFAULT_GEOCODER_POOL
+        if config:
+            if not isinstance(config, dict):
+                raise TypeError(
+                    "GeocoderPool configuration must be a dictionary"
+                )
+            self._geocoders = [
+                Geocoder(gc, self.config[gc]) for gc in self.config
+            ]
+        elif geocoders:
+            if not isinstance(geocoders, collections.Iterable):
+                raise TypeError(
+                    "GeocoderPool member geocoders must be an iterable set"
+                )
+            if not all(isinstance(g, geopy.Geocoder) for f in geocoders):
+                raise TypeError(
+                    "GeocoderPool member geocoders must be geopy.geocoder geocoder"
+                )
+            self._geocoders = geocoders
+
+
+    def __check_duplicates(self):
+        '''
+        Checks for duplicate members of the geocoding pool. If any are found,
+        a warning is emitted and duplicates are removed, leaving only unique
+        geocoders.
+        '''
+        if not len(set(self._geocoders)) == len(self._geocoders):
+            warnings.warn(
+                "Not all supplied geocoders are unique; ignoring duplicate entries"
+            )
+            self._geocoders = set(self._geocoders)
+        return self._geocoders
+
+    @classmethod
+    def fromfile(cls, config, caller=None):
+        if not caller:
+            with open(config, 'r') as cfg:
+                return cls(config=cfg)
+        else:
+            with open(config, 'r') as cfg:
+                return cls(config=caller(cfg))
+
+    @property
+    def config(self):
+        return self._config
 
     def geocode(self, query):
         pool = ThreadPool()
@@ -108,21 +232,21 @@ class GeocoderPool(object):
         locations = [item for sublist in results for item in sublist]
         return Location(locations)
 
-    def get_geocoders(self):
-        return [Geocoder(gc, self.config[gc]) for gc in self.config]
+    @property
+    def geocoders(self):
+        return self.__check_duplicates()
 
 
 if __name__ == '__main__':
     import yaml
-    # TODO work with already-instantiated geopy geocoders, too
     config = os.path.abspath(os.path.join(
         os.path.dirname( __file__ ), '..', 'configuration.yml'
     ))
-    with open(config, 'r') as geocoders:
-        g_pool = GeocoderPool(yaml.load(geocoders))
-        test = '66 Great North Road, Grey Lynn, Auckland, New Zealand'
-        location = g_pool.geocode(test)
-        print(location.get_convex_hull().wkt)
-        print(location.get_concave_hull().wkt)
-        print(location.get_multipoint().wkt)
-        print(location.get_clusters())
+    g_pool = GeocoderPool.fromfile(config, yaml.load)
+    test = '66 Great North Road, Grey Lynn, Auckland, 1021, New Zealand'
+    location = g_pool.geocode(test)
+    print(location)
+    print(location.convex_hull.wkt)
+    print(location.concave_hull.wkt)
+    print(location.multipoint.wkt)
+    print(location.clusters)

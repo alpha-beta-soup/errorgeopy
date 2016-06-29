@@ -9,7 +9,7 @@ from distutils.core import setup
 config = {
     'name': 'errorgeopy',
     'packages': ['errorgeopy'],
-    'version': "0.0.1",
+    'version': "0.0.2",
     'description': 'Python geocoding in a disagreeing world',
     'author': 'Richard Law',
     'author_email': 'richard.m.law@gmail.com',
