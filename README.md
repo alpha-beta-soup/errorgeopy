@@ -26,11 +26,11 @@ For example, given a configuration (not shown) for making requests to multiple g
 >>> from errorgeopy.geocoders import GeocoderPool
 >>> # Get geocoder configuration from a file
 >>> config = './configuration.yml'
->>> with open(config, 'r') as geocoders:
->>>     g_pool = GeocoderPool(yaml.load(geocoders))
->>>     test = '66 Great North Road, Grey Lynn, Auckland, New Zealand'
->>>     location = g_pool.geocode(test)
->>>     print(location.get_clusters())
+>>> g_pool = GeocoderPool.fromfilr(geocoders, yaml.load)
+>>> g_pool = GeocoderPool(yaml.load(geocoders))
+>>> test = '66 Great North Road, Grey Lynn, Auckland, New Zealand'
+>>> location = g_pool.geocode(test)
+>>> print(location.get_clusters())
 {
   0: {
     'centre': 'POINT (174.7445831298828 -36.8640251159668)',
