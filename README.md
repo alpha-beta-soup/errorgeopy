@@ -29,7 +29,7 @@ For example, given a configuration (not shown) for making requests to multiple g
 >>> g_pool = GeocoderPool.fromfile(config, yaml.load)
 >>> test = '66 Great North Road, Grey Lynn, Auckland, New Zealand'
 >>> location = g_pool.geocode(test)
->>> print(location.get_clusters())
+>>> print(location.clusters)
 {
   0: {
     'centre': 'POINT (174.7445831298828 -36.8640251159668)',
