@@ -26,8 +26,7 @@ For example, given a configuration (not shown) for making requests to multiple g
 >>> from errorgeopy.geocoders import GeocoderPool
 >>> # Get geocoder configuration from a file
 >>> config = './configuration.yml'
->>> g_pool = GeocoderPool.fromfilr(geocoders, yaml.load)
->>> g_pool = GeocoderPool(yaml.load(geocoders))
+>>> g_pool = GeocoderPool.fromfile(geocoders, yaml.load)
 >>> test = '66 Great North Road, Grey Lynn, Auckland, New Zealand'
 >>> location = g_pool.geocode(test)
 >>> print(location.get_clusters())
