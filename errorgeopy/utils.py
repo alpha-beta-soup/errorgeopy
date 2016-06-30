@@ -6,13 +6,15 @@ from scipy.spatial import Delaunay
 from sklearn.cluster import MeanShift, estimate_bandwidth
 from sklearn.preprocessing import Imputer
 
+from errorgeopy.smallestenclosingcircle import make_circle
+
 def geopy_point_to_shapely_point(point):
     '''
     Converts a geopy.point.Point to a shapely.geometry.Point
     '''
     if not isinstance(point, GeopyPoint):
         raise TypeError
-    return Point(iter(point))
+    return Point(point.longitude, point.latitude, point.altitude)
 
 def array_geopy_points_to_shapely_points(array_of_points):
     '''
@@ -126,12 +128,26 @@ def convex_hull(points):
     # starting at the point with the lexicographically smallest coordinates
     return Polygon(lower[:-1] + upper[:-1])
 
+def minimum_bounding_circle(points):
+    '''
+    Returns the minimum bounding circle of a set of points as a
+    shapely.geometry.Polygon (64-sided polygon approximating a circle)
+    '''
+    # TODO using cartesian coordinates, not geographic
+    mbc = make_circle(points)
+    if not mbc:
+        return None
+    x, y, radius = mbc
+    return Point(x, y).buffer(radius)
+
 def get_clusters(pts, bandwidth=None):
-    '''Returns one or more clusters of a set of points
+    '''
+    Returns one or more clusters of a set of points.
     The result is sorted with the first value being the largest cluster.
     Uses a mean-shift clustering algorithm.
-    If bandwidth is None, a value is detected automatically
-    from the input using estimate_bandwidth'''
+    If bandwidth is None, a value is detected automatically from the input using
+    estimate_bandwidth
+    '''
     if not pts:
         return None
     X = np.array(pts)

@@ -132,6 +132,18 @@ class Location(object):
         return MultiPoint(self._shapely_points())
 
     @property
+    def mbc(self):
+        '''
+        Returns a shapely.geometry.Polygon representing the minimum bounding
+        circle of the candidate locations
+        '''
+        if not self.points:
+            return None
+        return utils.minimum_bounding_circle(
+            [p[0:2] for p in self._tuple_points()]
+        )
+
+    @property
     def concave_hull(self, alpha=0.15):
         '''
         Returns a concave hull of the Location

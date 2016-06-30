@@ -12,14 +12,13 @@ def ErrorGeocode():
     config = os.path.abspath(os.path.join(
         os.path.dirname( __file__ ), '..', 'configuration.yml'
     ))
-    with open(config, 'r') as geocoders:
-        #?address=some-address
-        address = request.args.get('address')
-        g_pool = GeocoderPool(yaml.load(geocoders))
-        location = g_pool.geocode(address)
-        return Response(
-            location.get_multipoint().wkt, 200, mimetype='text/plain'
-        )
+    address = request.args.get('address')
+    g_pool = GeocoderPool.fromfile(config, yaml.load)
+    location = g_pool.geocode(address)
+    return Response(
+        location.multipoint.wkt, 200, mimetype='text/plain'
+        # str(location.mbc), 200, mimetype='text/plain'
+    )
 
 if __name__ == "__main__":
     app.run()

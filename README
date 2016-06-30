@@ -13,6 +13,13 @@ Requires Python 3; only tested with Python 3.5.
 
 `pip install errorgeopy`
 
+## Dependencies
+
+- `geopy`
+- `shapely` (outputs generally are `shapely.geometry` types in geographic coordinates)
+- `sklearn`
+- `scipy`
+
 # Why?
 
 Geocoding is very hard, although consumer-grade APIs make the process seem very easy. Intuitively, it does seem easy: address goes in, point comes out. [That's what Osaka Seafood Concern is all about. Every truckload of addresses you geocode brings you 31 cents closer to those tickets home!](https://www.youtube.com/watch?v=cIosb69x9iI)

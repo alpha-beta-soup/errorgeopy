@@ -2,20 +2,45 @@
 # python setup.py sdist
 # python setup.py register sdist upload
 
-from distutils.core import setup
+# from distutils.core import setup
+import os
+import codecs
+import re
+from setuptools import setup
+
+def read(*parts):
+    path = os.path.join(os.path.dirname(__file__), *parts)
+    with codecs.open(path, encoding='utf-8') as fobj:
+        return fobj.read()
+
+def find_version(*file_paths):
+    version_file = read(*file_paths)
+    version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]", version_file, re.M)
+    if version_match:
+        return version_match.group(1)
+    raise RuntimeError("Unable to find version string.")
 
 # https://www.python.org/dev/peps/pep-0314/
 # https://pypi.python.org/pypi?:action=list_classifiers
+
+# TODO probably works with earlier versions too... how does one figure this out?
+install_requires = [
+    'Shapely >= 1.5',
+    'geopy >= 1',
+    'sklearn >= 0',
+    'scipy >= 0.17'
+]
+
 config = {
     'name': 'errorgeopy',
     'packages': ['errorgeopy'],
-    'version': "0.0.2",
+    'version': find_version("errorgeopy", "__init__.py"),
     'description': 'Python geocoding in a disagreeing world',
     'author': 'Richard Law',
     'author_email': 'richard.m.law@gmail.com',
     'url': 'https://github.com/alpha-beta-soup/errorgeopy',
     'download_url': 'https://github.com/alpha-beta-soup/errorgeopy/archive/master.zip',
-    'requires': ['nose','numpy','scipy','geopy','shapely','pyhull','sklearn'],
+    'install_requires': install_requires,
     'scripts': [],
     'classifiers': [
         "Programming Language :: Python",
