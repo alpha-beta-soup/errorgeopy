@@ -1,7 +1,5 @@
 language: python
 python:
-  - "2.6"
-  - "2.7"
   - "3.2"
   - "3.3"
   - "3.4"
@@ -12,6 +10,7 @@ python:
 before_install:
     - sudo apt-get install -qq python-numpy python-scipy
 install:
-    - python setup.py install
+    # - python setup.py install # Fails because of scipy/travis crap
+    - pip install shapely geopy sklearn
 # command to run tests
 script: nosetests
