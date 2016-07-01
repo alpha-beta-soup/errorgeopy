@@ -1,6 +1,10 @@
 # errorgeopy
 Python geocoding in a disagreeing world
 
+<!-- pandoc --from=markdown --to=rst --output=README.rst README.md -->
+
+![Dependencies](https://www.versioneye.com/user/projects/5775cea668ee070047f065e4/badge.svg?style=flat-square) [![PyPI version](https://badge.fury.io/py/errorgeopy.svg)](https://pypi.python.org/pypi/errorgeopy) ![Build status](https://api.travis-ci.org/alpha-beta-soup/errorgeopy.svg)
+
 Wraps [geopy](https://github.com/geopy/geopy) geocoding to expose a simple way to use multiple providers of geocoding services simultaneously (with `multiprocessing`), and provide a report of the ensuing spatial uncertainty in the final location.
 
 0. Configure your desired/allowed geocoding providers (`config.yml`).
@@ -9,7 +13,7 @@ Wraps [geopy](https://github.com/geopy/geopy) geocoding to expose a simple way t
 
 # Installation
 
-Requires Python 3; only tested with Python 3.5.
+Requires Python 3; only tested with Python 3.4
 
 `pip install errorgeopy`
 

@@ -2,9 +2,12 @@ import os
 
 import yaml
 from flask import Flask, Response, request
-app = Flask(__name__)
+from flask_cors import CORS, cross_origin
 
 from errorgeopy.geocoders import GeocoderPool
+
+app = Flask(__name__)
+CORS(app)
 
 @app.route('/', methods=['GET'])
 def ErrorGeocode():
