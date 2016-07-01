@@ -27,7 +27,7 @@ def find_version(*file_paths):
 install_requires = [
     'Shapely >= 1.5',
     'geopy >= 1',
-    'sklearn >= 0',
+    'scikit-learn >= 0.15',
     'scipy >= 0.17'
 ]
 
