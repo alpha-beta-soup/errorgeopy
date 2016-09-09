@@ -20,9 +20,11 @@ Requires Python 3; only tested with Python 3.4
 ## Dependencies
 
 - `geopy`
-- `shapely` (outputs generally are `shapely.geometry` types in geographic coordinates)
-- `sklearn`
-- `scipy`
+- `shapely` (outputs generally are `shapely.geometry` types in geographic coordinates, to get that sweet `__geo_interface__`)
+- `scikit-learn` (cluster detection)
+- `scipy` (for Delaunay triangulation for concave hulls)
+
+![Delaunay circumcircles](./docs/img/delaunay-circumcircles.png)
 
 # Why?
 
@@ -40,31 +42,21 @@ For example, given a configuration (not shown) for making requests to multiple g
 >>> g_pool = GeocoderPool.fromfile(config, yaml.load)
 >>> test = '66 Great North Road, Grey Lynn, Auckland, New Zealand'
 >>> location = g_pool.geocode(test)
->>> print(location.clusters)
-{
-  0: {
-    'centre': 'POINT (174.7445831298828 -36.8640251159668)',
-    'members': [
-      (174.7375733, -36.8654),
-      (174.74137, -36.86642),
-      (174.75116408200063, -36.86094807899963)
-    ]
-  },
-  1: {
-    'centre': 'POINT (174.7426300048828 -36.86511993408203)',
-    'members': [
-      (174.7511328, -36.8610372),
-      (174.7402083, -36.8668223),
-      (174.7428788, -36.8659204)
-    ]
-  }
-}
+>>> for cl in location.clusters:
+>>>     print(
+>>>         'CENTRE: %s\n' % cl['centre'].wkt,
+>>>         'MEMBERS: %s' % cl['members'].wkt
+>>>     )
+CENTRE: POINT Z (174.7384643554688 -36.86515808105469 0)
+MEMBERS: MULTIPOINT Z (174.7375733 -36.8654 0, 174.7402083 -36.8668223 0, 174.7428788 -36.8659204 0, 174.7428788 -36.8659204 0, 174.7432 -36.863 0, 174.7173 -36.86803 0, 174.7511328 -36.8610372 0, 174.7511640820006 -36.86094807899963 0)
+CENTRE: POINT Z (174.7366638183594 -36.86574554443359 0)
+MEMBERS: POINT Z (174.7325854 -36.8651064 0)
 ```
 
 <!-- TODO find a better example -->
 
 In the above, we have two identified clusters:
-- The first (`0`) centrered at `POINT (174.7445831298828 -36.8640251159668)`, and another (`1`) centered at `POINT (174.7426300048828 -36.86511993408203)`. In this case they have an equal number of members, so the ambiguity unfortunately isn't well resolved, but at least now you have two smaller clusters you can use, rather than being left with a larger area of ambiguous addresses.
+- The first (`0`) centrered at `POINT Z (174.7384643554688 -36.86515808105469 0)`, and another (`1`) centered at `POINT Z (174.7366638183594 -36.86574554443359 0)`. A clustering algorithm has determined that the full set of results could be split into these two groups, and because the first group is larger than the second, it might be sensible for you to ignore the second location that the majority of input geocoders did not consider the best match.
 
 There are also methods to return a complete mutlipoint geometry, a convex hull, and a concave hull of the result set.
 
@@ -79,3 +71,17 @@ pip install errorgeopy --no-index --find-links file:///path/to/errorgeopy/dist/e
 ```
 
 Inside `./demo` there is a Flask application that uses the environment's installed version of errorgeopy for running a demonstration.
+
+## To-do for v1.0.0-rc
+
+- [ ] Unit testing (using `nosetests`)
+- [ ] Centroids of `Location`
+- [x] Implementing `__geo_interface__` for a `Location.cluster` property
+- [ ] Reverse geocoding, with string similarity algorithms as an optional reporting tool to gauge agreement, cluster, and attempt to identify the "most complete" address (http://chairnerd.seatgeek.com/fuzzywuzzy-fuzzy-string-matching-in-python/)
+
+## testing
+
+```
+sudo python setup.py develop
+py.test -v tests/
+```

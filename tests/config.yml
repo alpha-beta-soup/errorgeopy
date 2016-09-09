@@ -1,0 +1,15 @@
+ArcGIS:
+  geocode:
+    exactly_one: true
+  reverse:
+    distance: 1000
+Nominatim:
+  country_bias: "New Zealand"
+  geocode:
+    addressdetails: true
+    language: en
+    # geometry: kml # TODO wkt, kml, geojson
+    exactly_one: false
+  reverse:
+    exactly_one: true
+    language: en

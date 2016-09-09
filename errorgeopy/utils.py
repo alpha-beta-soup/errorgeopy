@@ -1,12 +1,28 @@
 import numpy as np
 
+import geopy
 from geopy.point import Point as GeopyPoint
-from shapely.geometry import Point, Polygon
+from shapely.geometry import Point, MultiPoint, Polygon
 from scipy.spatial import Delaunay
 from sklearn.cluster import MeanShift, estimate_bandwidth
 from sklearn.preprocessing import Imputer
 
 from errorgeopy.smallestenclosingcircle import make_circle
+
+
+def check_location_type(func):
+    '''Decorator for checking that the first argument of a function is an array
+    of geopy.Location objects. Raises ValueError is this condition is not met.
+    '''
+
+    def inner(*args, **kwargs):
+        if not all(map(lambda x: isinstance(x, geopy.Location), args[1])):
+            raise ValueError
+        else:
+            return func(*args, **kwargs)
+
+    return inner
+
 
 def geopy_point_to_shapely_point(point):
     '''
@@ -16,12 +32,14 @@ def geopy_point_to_shapely_point(point):
         raise TypeError
     return Point(point.longitude, point.latitude, point.altitude)
 
+
 def array_geopy_points_to_shapely_points(array_of_points):
     '''
     Converts an array of geopy.point.Point objects to an array of
     shapely.geometry.Point objects
     '''
     return [geopy_point_to_shapely_point(p) for p in array_of_points]
+
 
 def array_geopy_points_to_xyz_tuples(array_of_points):
     '''
@@ -30,26 +48,27 @@ def array_geopy_points_to_xyz_tuples(array_of_points):
     '''
     return [geopy_point_to_shapely_point(p).coords[0] for p in array_of_points]
 
+
 def sq_norm(v):
     '''Squared norm'''
     return np.linalg.norm(v)**2
+
 
 def circumcircle(points, simplex):
     '''Computes the circumcentre and circumradius of a triangle:
     https://en.wikipedia.org/wiki/Circumscribed_circle#Circumcircle_equations
     '''
     A = [points[simplex[k]] for k in range(3)]
-    M = np.asarray(
-        [[1.0]*4] + [[sq_norm(A[k]), A[k][0], A[k][1], 1.0] for k in range(3)],
-        dtype=np.float32
-    )
-    S = np.array(
-        [0.5*np.linalg.det(M[1:,[0,2,3]]), -0.5*np.linalg.det(M[1:,[0,1,3]])]
-    )
-    a = np.linalg.det(M[1:,1:])
-    b = np.linalg.det(M[1:,[0,1,2]])
-    centre, radius = S/a, np.sqrt(b/a+sq_norm(S)/a**2)
+    M = np.asarray([[1.0] * 4] +
+                   [[sq_norm(A[k]), A[k][0], A[k][1], 1.0] for k in range(3)],
+                   dtype=np.float32)
+    S = np.array([0.5 * np.linalg.det(M[1:, [0, 2, 3]]),
+                  -0.5 * np.linalg.det(M[1:, [0, 1, 3]])])
+    a = np.linalg.det(M[1:, 1:])
+    b = np.linalg.det(M[1:, [0, 1, 2]])
+    centre, radius = S / a, np.sqrt(b / a + sq_norm(S) / a**2)
     return centre, radius
+
 
 def get_alpha_complex(alpha, points, simplexes):
     '''
@@ -58,9 +77,9 @@ def get_alpha_complex(alpha, points, simplexes):
     simplexes: the list of indices that define 2-simplexes in the Delaunay
                triangulation
     '''
-    return filter(
-        lambda simplex: circumcircle(points, simplex)[1]<alpha, simplexes
-    )
+    return filter(lambda simplex: circumcircle(points, simplex)[1] < alpha,
+                  simplexes)
+
 
 def concave_hull(points, alpha, delunay_args=None):
     delunay_args = delunay_args or {
@@ -69,17 +88,16 @@ def concave_hull(points, alpha, delunay_args=None):
         'qhull_options': None
     }
     triangulation = Delaunay(np.array(points))
-    alpha_complex = get_alpha_complex(
-        alpha, points, triangulation.simplices
-    )
+    alpha_complex = get_alpha_complex(alpha, points, triangulation.simplices)
     X, Y = [], []
     for s in triangulation.simplices:
-        X.append([points[s[k]][0] for k in [0,1,2,0]])
-        Y.append([points[s[k]][1] for k in [0,1,2,0]])
-    poly = Polygon(list(zip(X[0],Y[0])))
-    for i in range(1,len(X)):
-        poly = poly.union(Polygon(list(zip(X[i],Y[i]))))
+        X.append([points[s[k]][0] for k in [0, 1, 2, 0]])
+        Y.append([points[s[k]][1] for k in [0, 1, 2, 0]])
+    poly = Polygon(list(zip(X[0], Y[0])))
+    for i in range(1, len(X)):
+        poly = poly.union(Polygon(list(zip(X[i], Y[i]))))
     return poly
+
 
 def cross(o, a, b):
     '''
@@ -89,6 +107,7 @@ def cross(o, a, b):
     negative for clockwise turn, and zero if the points are collinear.
     '''
     return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
 
 # https://en.wikibooks.org/wiki/Algorithm_Implementation/Geometry/Convex_hull/Monotone_chain#Python
 def convex_hull(points):
@@ -128,6 +147,7 @@ def convex_hull(points):
     # starting at the point with the lexicographically smallest coordinates
     return Polygon(lower[:-1] + upper[:-1])
 
+
 def minimum_bounding_circle(points):
     '''
     Returns the minimum bounding circle of a set of points as a
@@ -140,6 +160,7 @@ def minimum_bounding_circle(points):
     x, y, radius = mbc
     return Point(x, y).buffer(radius)
 
+
 def get_clusters(pts, bandwidth=None):
     '''
     Returns one or more clusters of a set of points.
@@ -148,38 +169,46 @@ def get_clusters(pts, bandwidth=None):
     If bandwidth is None, a value is detected automatically from the input using
     estimate_bandwidth
     '''
+    # TODO parameters?
     if not pts:
         return None
     X = np.array(pts)
-    assert not np.any(np.isnan(X))
-    assert np.all(np.isfinite(X))
+    if np.any(np.isnan(X)) or not np.all(np.isfinite(X)):
+        return None
     X = Imputer().fit_transform(X)
     X = X.astype(np.float32)
-    print(X)
-    # print(X)
-    # # from sklearn.utils.validation import _assert_all_finite
-    # # assert _assert_all_finite(X)
-    # if (X.dtype.char in np.typecodes['AllFloat'] and not np.isfinite(X.sum())
-    #         and not np.isfinite(X).all()):
-    #     raise ValueError("Input contains NaN, infinity"
-    #             " or a value too large for %r." % X.dtype)
-    # import time
-    # print("yeah")
-    # time.sleep(5)
-    # assert not ((X.dtype.char in np.typecodes['AllFloat'] and not np.isfinite(X.sum()) and not np.isfinite(X).all()))
     if not bandwidth:
         bandwidth = estimate_bandwidth(X, quantile=0.3)
     ms = MeanShift(bandwidth=bandwidth or None, bin_seeding=False)
     ms.fit(X)
     labels = ms.labels_
     cluster_centres = ms.cluster_centers_
-    clusters = {} # TODO replace with actual object, refactor
+    clusters = []  # TODO replace with actual object, refactor
     for i, cc in enumerate(ms.cluster_centers_):
-        clusters[i] = {}
-        clusters[i]['centre'] = Point(cc).wkt
-        clusters[i]['members'] = []
+        cluster = {}
+        cluster['centre'] = Point(cc)
+        cluster['members'] = []
         for j, label in enumerate(labels):
             if not label == i:
                 continue
-            clusters[i]['members'].append(pts[j])
+            cluster['members'].append(pts[j])
+        members = cluster.get('members')
+        if members and len(members) == 1:
+            cluster['members'] = Point(members)
+        elif members and len(members) > 1:
+            cluster['members'] = MultiPoint(members)
+        clusters.append(cluster)
     return clusters
+
+
+def long_substr(data):
+    if not data:
+        return None
+    if len(data) == 1:
+        return data[0]
+    substr = ''
+    for i in range(len(data[0])):
+        for j in range(len(data[0]) - i + 1):
+            if j > len(substr) and all(data[0][i:i + j] in x for x in data):
+                substr = data[0][i:i + j]
+    return substr.strip()
