@@ -3,7 +3,7 @@ Python geocoding in a disagreeing world
 
 <!-- pandoc --from=markdown --to=rst --output=README.rst README.md -->
 
-![Dependencies](https://www.versioneye.com/user/projects/5775cea668ee070047f065e4/badge.svg?style=flat-round) [![PyPI version](https://badge.fury.io/py/errorgeopy.svg)](https://pypi.python.org/pypi/errorgeopy) ![Build status](https://api.travis-ci.org/alpha-beta-soup/errorgeopy.svg)
+![Dependencies](https://www.versioneye.com/user/projects/5775cea668ee070047f065e4/badge.svg?style=flat-round) [![PyPI version](https://badge.fury.io/py/errorgeopy.svg)](https://pypi.python.org/pypi/errorgeopy) ![Build status](https://api.travis-ci.org/alpha-beta-soup/errorgeopy.svg) [![Coverage Status](https://coveralls.io/repos/github/alpha-beta-soup/errorgeopy/badge.svg?branch=master)](https://coveralls.io/github/alpha-beta-soup/errorgeopy?branch=master)
 
 Wraps [geopy](https://github.com/geopy/geopy) geocoding to expose a simple way to use multiple providers of geocoding services simultaneously (with `multiprocessing`), and provide a report of the ensuing spatial uncertainty in the final location.
 
@@ -72,16 +72,36 @@ pip install errorgeopy --no-index --find-links file:///path/to/errorgeopy/dist/e
 
 Inside `./demo` there is a Flask application that uses the environment's installed version of errorgeopy for running a demonstration.
 
-## To-do for v1.0.0-rc
+## Features
 
-- [ ] Unit testing (using `nosetests`)
-- [ ] Centroids of `Location`
-- [x] Implementing `__geo_interface__` for a `Location.cluster` property
-- [ ] Reverse geocoding, with string similarity algorithms as an optional reporting tool to gauge agreement, cluster, and attempt to identify the "most complete" address (http://chairnerd.seatgeek.com/fuzzywuzzy-fuzzy-string-matching-in-python/)
+- [x] **alpha** (≤ **v0.3**) and [ ] **beta** (**v0.4**)
+  - [x] Basic premise implementation: wrapping calls to multiple geocoding proiders (anything supported by geopy forward geocoding)
+  - [x] Available on PiPy
+  - [x] Simple geometric operations on candidate addresses
+    - Centroids
+    - K-means clustering
+    - Smallest bounding circle
+    - Convex hull
+    - Concave hull
+    - Use of shapely as implementation of `__geo_interface__` for Python objects
 
-## testing
+- [ ] **v1.0**
+  - [x] Unit testing (using `tox` and `pytest`)
+  - [ ] Centroids of `Location`
+  - [x] Implementing `__geo_interface__` for a `Location.cluster` property
+  - [x] Reverse geocoding, with string similarity algorithms as an optional reporting tool to gauge agreement, cluster, and attempt to identify the "most complete" address (http://chairnerd.seatgeek.com/fuzzywuzzy-fuzzy-string-matching-in-python/)
+- [ ] **v1.1**
+  - [ ] Hierarchical clustering
+    - Still only a vague idea in my mind
+    - http://varianceexplained.org/r/kmeans-free-lunch/
+    - https://en.wikipedia.org/wiki/Hierarchical_clustering
+    - http://docs.scipy.org/doc/scipy/reference/cluster.hierarchy.html
+    - Method to return a topological [dendrogram](http://docs.scipy.org/doc/scipy/reference/generated/scipy.cluster.hierarchy.dendrogram.html#scipy.cluster.hierarchy.dendrogram) of the clusters (from centre of all, branching to local centres, and finally to the leaves (actual addresses returned from services), as a geographical feature that can readily be plotted on a map
+
+## Testing
+
+Requires [tox](http://tox.readthedocs.io/en/latest/install.html).
 
 ```
-sudo python setup.py develop
-py.test -v tests/
+sudo tox
 ```
