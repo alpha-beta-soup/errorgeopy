@@ -134,9 +134,9 @@ class Location(object):
     @check_polygonisable
     def concave_hull(self, alpha=0.15):
         '''
-        Returns a concave hull of the Location
+        Returns a concave hull of the Location, as a shapely.geometry.Polygon
+        object.
         '''
-        # TODO document return value
         return utils.concave_hull([p[0:2] for p in self._tuple_points()],
                                   alpha)
 
@@ -144,9 +144,9 @@ class Location(object):
     @check_polygonisable
     def convex_hull(self):
         '''
-        Returns a convex hull of the Location
+        Returns a convex hull of the Location, as a shapely.geometry.Polygon
+        object.
         '''
-        # TODO document return value
         return utils.convex_hull(self._tuple_points())
 
     @property
