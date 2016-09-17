@@ -90,7 +90,8 @@ Inside `./demo` there is a Flask application that uses the environment's install
   - [x] Centroids of `Location`
   - [x] Implementing `__geo_interface__` for a `Location.cluster` property
   - [x] Reverse geocoding, with string similarity algorithms as an optional reporting tool to gauge agreement, cluster, and attempt to identify the "most complete" address (http://chairnerd.seatgeek.com/fuzzywuzzy-fuzzy-string-matching-in-python/)
-  - [ ] Cleaner implementation of k-means clustering (better response object)
+  - [ ] Cleaner implementation of k-means clustering (better response object for cluster)
+  - [ ] Documentation on readthedocs.io, built from source code
 - [ ] **v1.1**
   - [ ] Hierarchical clustering
     - Still only a vague idea in my mind

@@ -35,12 +35,27 @@ if location:
 
 @pytest.fixture
 def addresses():
-    return ['66 Great North Road, Grey Lynn, Auckland, 1021, New Zealand']
+    return (
+        '66 Great North Road, Grey Lynn, Auckland, 1021, New Zealand',
+        'High Street, Lower Hutt, New Zealand',
+        '10 Aurora Street, Petone, Lower Hutt, Wellington',  # Doesn't produce enough for a cluster
+        '10 Aurora Street, Petone, Lower Hutt, 5012',  # Doesn't produce enough for a cluster
+        'Oriental Street, Lower Hutt, New Zealand',
+        'Oriental Bay, Wellington, New Zealand',
+        'Oriental Vay, Wellington, NZ',  # Deliberate typo "Vay",
+        'ZJ6AZ2Ixgp1or4O'  # Deliberate nonsense, random string
+    )
 
 
 @pytest.fixture
 def addresses_reverse():
-    return [(-37.8007774, 174.869645)]
+    return ((-37.8007774, 174.869645),  # 66 Great North Road
+            (-41.2296258, 174.8828724),  # 10 Aurora Street, Petone, Lower Hutt
+            (-41.1945832, 174.9403476),  # High Street, Lower Hutt
+            (-41.2910862, 174.7882479),  # Oriental Bay, Wellington
+            # (-90, 0)  # South Pole
+            # (-91, 181)  # Out of range
+            )
 
 
 @pytest.fixture
@@ -111,11 +126,15 @@ def test_geocode():
         assert all([isinstance(x, str) for x in res.addresses])
         assert all([isinstance(x, geopy.Point) for x in res.points])
         assert isinstance(res.multipoint, shapely.geometry.MultiPoint)
-        assert isinstance(res.mbc, shapely.geometry.Polygon)
-        assert isinstance(res.concave_hull, shapely.geometry.Polygon)
-        assert isinstance(res.convex_hull, shapely.geometry.Polygon)
+        assert isinstance(res.mbc, shapely.geometry.Polygon) or res.mbc is None
+        assert isinstance(res.concave_hull, shapely.geometry.Polygon) or (
+            res.concave_hull is None and len(res) < 4)
+        assert isinstance(res.convex_hull, shapely.geometry.Polygon) or (
+            res.convex_hull is None and len(res) < 3)
         assert isinstance(res.centroid, shapely.geometry.Point)
-        # assert isinstance(res.clusters, shapely.geometry.) # TODO decide on type of object to represent clusters
+        assert isinstance(res.clusters, errorgeopy.location.LocationClusters)
+        assert isinstance(res.clusters.geometry_collection(),
+                          shapely.geometry.GeometryCollection)
 
 
 def test_reverse_geocode():

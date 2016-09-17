@@ -1,5 +1,5 @@
 import geopy
-from shapely.geometry import MultiPoint
+from shapely.geometry import MultiPoint, GeometryCollection
 
 from errorgeopy import utils
 
@@ -26,6 +26,81 @@ def check_polygonisable(func):
             return func(*args, **kwargs)
 
     return inner
+
+
+def check_concave_hull_calcuable(func):
+    '''Decorator for checking that there are enough candidates to compute a
+    concave hull.
+    '''
+
+    def inner(*args, **kwargs):
+        if len(args[0]) < 4:
+            return None
+        else:
+            return func(*args, **kwargs)
+
+    return inner
+
+
+def check_convex_hull_calcuable(func):
+    '''Decorator for checking that there are enough candidates to compute a
+    concave hull.
+    '''
+
+    def inner(*args, **kwargs):
+        if len(args[0]) < 3:
+            return None
+        else:
+            return func(*args, **kwargs)
+
+    return inner
+
+
+def check_cluster_calculable(func):
+    def inner(*args, **kwargs):
+        if len(args[0]._location) < 3:
+            return []
+        else:
+            return func(*args, **kwargs)
+
+    return inner
+
+
+# TODO it'd be nice to have the names of the geocoder that produced each cluster member; this would require extending geopy.Location to include this information
+class LocationClusters(object):
+    def __init__(self, location):
+        '''
+        Represents clusters of addresses identified from an input
+        errorgeopy.Location object
+        '''
+        self._location = location
+
+    @property
+    @check_cluster_calculable
+    def clusters(self):
+        '''
+        Returns clusters, else an empty array
+        '''
+        return utils.get_clusters(self._location, Location)
+
+    def __len__(self):
+        return len(self.clusters)
+
+    def __str__(self):
+        return self.__unicode__()
+
+    def __unicode__(self):
+        return '\n'.join([str(c.location) for c in self.clusters])
+
+    def __getitem__(self, index):
+        return self.clusters[index]
+
+    def geometry_collection(self):
+        # TODO don't use the private property of location
+        return GeometryCollection([c.geom for c in self.clusters])
+
+    def cluster_centres(self):
+        return MultiPoint([c.centroid for c in self.clusters])
 
 
 class Location(object):
@@ -131,21 +206,23 @@ class Location(object):
             [p[0:2] for p in self._tuple_points()])
 
     @property
+    @check_concave_hull_calcuable
     @check_polygonisable
     def concave_hull(self, alpha=0.15):
         '''
         Returns a concave hull of the Location, as a shapely.geometry.Polygon
-        object.
+        object. Needs at least four candidates to function, else returns None.
         '''
         return utils.concave_hull([p[0:2] for p in self._tuple_points()],
                                   alpha)
 
     @property
+    @check_convex_hull_calcuable
     @check_polygonisable
     def convex_hull(self):
         '''
         Returns a convex hull of the Location, as a shapely.geometry.Polygon
-        object.
+        object. Needs at least three candidates to function, else returns None.
         '''
         return utils.convex_hull(self._tuple_points())
 
@@ -157,4 +234,4 @@ class Location(object):
         addresses
         '''
         # TODO document and maybe sub-class the return value
-        return utils.get_clusters(self._tuple_points())
+        return LocationClusters(self)

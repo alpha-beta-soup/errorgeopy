@@ -1,4 +1,5 @@
 import numpy as np
+from collections import namedtuple
 
 import geopy
 from geopy.point import Point as GeopyPoint
@@ -161,15 +162,26 @@ def minimum_bounding_circle(points):
     return Point(x, y).buffer(radius)
 
 
-def get_clusters(pts, bandwidth=None):
+def cluster_named_tuple():
+    '''Defines a NamedTuple representing a single cluster.
+    label: the id of the cluster (int)
+    centroid: Point representing the cluster centre
+    geom: MultiPoint (or Point) representing the cluster members
+    location: errorgeopy.Location object (one cluster from the input set'''
+    return namedtuple('Cluster', ['label', 'centroid', 'geom', 'location'])
+
+
+def get_clusters(location, location_callback, bandwidth=None):
     '''
     Returns one or more clusters of a set of points.
     The result is sorted with the first value being the largest cluster.
     Uses a mean-shift clustering algorithm.
     If bandwidth is None, a value is detected automatically from the input using
-    estimate_bandwidth
+    estimate_bandwidth.
+    Returns a list of NamedTuples (see get_cluster_named_tuple for a definition
+    of the tuple).
     '''
-    # TODO parameters?
+    pts = location._tuple_points()
     if not pts:
         return None
     X = np.array(pts)
@@ -181,23 +193,23 @@ def get_clusters(pts, bandwidth=None):
         bandwidth = estimate_bandwidth(X, quantile=0.3)
     ms = MeanShift(bandwidth=bandwidth or None, bin_seeding=False)
     ms.fit(X)
-    labels = ms.labels_
-    cluster_centres = ms.cluster_centers_
-    clusters = []  # TODO replace with actual object, refactor
-    for i, cc in enumerate(ms.cluster_centers_):
-        cluster = {}
-        cluster['centre'] = Point(cc)
-        cluster['members'] = []
-        for j, label in enumerate(labels):
-            if not label == i:
+    clusters, geom_methods = [], {1: Point}
+    for cluster_id, cluster_centre in enumerate(ms.cluster_centers_):
+        geoms, locations = [], []
+        for j, label in enumerate(ms.labels_):
+            if not label == cluster_id:
                 continue
-            cluster['members'].append(pts[j])
-        members = cluster.get('members')
-        if members and len(members) == 1:
-            cluster['members'] = Point(members)
-        elif members and len(members) > 1:
-            cluster['members'] = MultiPoint(members)
-        clusters.append(cluster)
+            geoms.append(pts[j])
+            locations.append(location.locations[j])
+        if len(geoms) == 0:
+            continue
+        # geoms = geom_methods.get(len(geoms), MultiPoint)(geoms)
+        loc = location_callback(locations)
+        geoms = location.multipoint
+        clusters.append(cluster_named_tuple()(label=cluster_id,
+                                              centroid=Point(cluster_centre),
+                                              geom=geoms,
+                                              location=loc))
     return clusters
 
 
