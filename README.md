@@ -33,33 +33,59 @@ Geocoding is very hard, although consumer-grade APIs make the process seem very 
 
 But what if two different geocoding services both claim a successful address-level match, but the output location is different? If it is a subtle difference, it probably doesn't matter, especially if both addresses are within the same parcel. If it is a significant difference, it is possible that the two services have identified an ambiguity in the input address, or that one of them is just wrong, or that one of them can only match down to the suburb, and not the street or numberered address. Using more services may help you identify such a situtation and ignore such "minority opinions". **This is exactly what errorgeopy can do for you.**
 
-For example, given a configuration (not shown) for making requests to multiple geocoding services, errorgeopy can return identified clusters of addresses, in order, with the first cluster being the largest (and therefore most likely positive match):
+For example, by making requests to *multiple geocoding services*, errorgeopy can return identified clusters of addresses, in order, with the first cluster being the largest:
 
 ```python
->>> import os, yaml
 >>> from errorgeopy.geocoders import GeocoderPool
->>> # Get geocoder configuration from a file
->>> config = './configuration.yml'
->>> g_pool = GeocoderPool.fromfile(config, yaml.load)
->>> test = '66 Great North Road, Grey Lynn, Auckland, New Zealand'
+>>> # Optionally, can also get geocoder configuration from a file, or a dict
+>>> g_pool = GeocoderPool() # Use default, free, no sign-up geocoding APIs
+>>> test = 'High Street, Lower Hutt, New Zealand'
 >>> location = g_pool.geocode(test)
 >>> for cl in location.clusters:
->>>     print(
->>>         'CENTRE: %s\n' % cl['centre'].wkt,
->>>         'MEMBERS: %s' % cl['members'].wkt
->>>     )
-CENTRE: POINT Z (174.7384643554688 -36.86515808105469 0)
-MEMBERS: MULTIPOINT Z (174.7375733 -36.8654 0, 174.7402083 -36.8668223 0, 174.7428788 -36.8659204 0, 174.7428788 -36.8659204 0, 174.7432 -36.863 0, 174.7173 -36.86803 0, 174.7511328 -36.8610372 0, 174.7511640820006 -36.86094807899963 0)
-CENTRE: POINT Z (174.7366638183594 -36.86574554443359 0)
-MEMBERS: POINT Z (174.7325854 -36.8651064 0)
+>>>    print(cl)
+[
+  Cluster(
+    label=0,
+    centroid=<shapely.geometry.point.Point object at 0x7fb1f99c8358>,
+    geom=<shapely.geometry.multipoint.MultiPoint object at 0x7fb1f9a1a668>,
+    location=[
+      Location(High Street, Taita, Lower Hutt, Lower Hutt City, Wellington, 5011, New Zealand, (-41.166847, 174.9673, 0.0))
+      Location(High Street, Boulcott, Lower Hutt, Lower Hutt City, Wellington, 5040, New Zealand, (-41.2034803, 174.9215726, 0.0))
+      Location(High Street, Avalon, Lower Hutt, Lower Hutt City, Wellington, 5011, New Zealand, (-41.1890827, 174.9522785, 0.0))
+      Location(High Street, Lower Hutt Central, Lower Hutt, Lower Hutt City, Wellington, 5010, New Zealand, (-41.2119292, 174.8996589, 0.0))
+    ]
+  ),
+
+  Cluster(
+    label=1,
+    centroid=<shapely.geometry.point.Point object at 0x7fb1f99de710>,
+    geom=<shapely.geometry.multipoint.MultiPoint object at 0x7fb1f99de240>,
+    location=[
+      Location(High Street, Petone, Lower Hutt, Lower Hutt City, Wellington, 5012, New Zealand, (-41.2250375, 174.8894697, 0.0))
+      Location(High Street, Boulcott, Lower Hutt, Lower Hutt City, Wellington, 5010, New Zealand, (-41.2038771, 174.9165404, 0.0))
+      Location(High Street, Lower Hutt Central, Lower Hutt, Lower Hutt City, Wellington, 5010, New Zealand, (-41.2067898, 174.9079979, 0.0))
+      Location(High St, Lower Hutt, 5010, (-41.20740676599962, 174.9066761100006, 0.0))
+    ]
+  ),
+
+  Cluster(
+    label=2,
+    centroid=<shapely.geometry.point.Point object at 0x7fb1f9a29d30>,
+    geom=<shapely.geometry.multipoint.MultiPoint object at 0x7fb1f99db198>,
+    location=[
+      Location(High Street, Manor Park, Lower Hutt, Lower Hutt City, Wellington, 5011, New Zealand, (-41.1662641, 174.9716431, 0.0))
+    ]
+  )
+]
 ```
 
 <!-- TODO find a better example -->
 
-In the above, we have two identified clusters:
-- The first (`0`) centrered at `POINT Z (174.7384643554688 -36.86515808105469 0)`, and another (`1`) centered at `POINT Z (174.7366638183594 -36.86574554443359 0)`. A clustering algorithm has determined that the full set of results could be split into these two groups, and because the first group is larger than the second, it might be sensible for you to ignore the second location that the majority of input geocoders did not consider the best match.
+In the above, we have three identified clusters. If you know your input to be well-specified, then you might pick the larger groups, and disregard the cluster with only one member. In this case, we just have a vague input, and so should embrace the vagueness of our result. A single geocoding service with a vague input address would be considerably more constrained than this result.
 
-There are also methods to return a complete mutlipoint geometry, a convex hull, and a concave hull of the result set.
+There are also methods to return a complete mutlipoint geometry, a convex hull, a concave hull of the result set.
+
+Reverse geocoding is also supported, including the ability to "seed" the result with a string that the results are scored against using fuzzy string matching. You can also obtain the longest common substring. (I'm sure there's much more that can be done with matching address string, let me know if you have an idea.)
 
 # Contributing and/or developing
 
