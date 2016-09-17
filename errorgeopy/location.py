@@ -113,6 +113,15 @@ class Location(object):
 
     @property
     @check_points_exist
+    def centroid(self):
+        '''
+        Returns a shapely.geometry.Point of the centre of all candidate address
+        locations
+        '''
+        return self.multipoint.centroid
+
+    @property
+    @check_points_exist
     def mbc(self):
         '''
         Returns a shapely.geometry.Polygon representing the minimum bounding

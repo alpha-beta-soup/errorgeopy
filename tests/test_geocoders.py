@@ -114,6 +114,7 @@ def test_geocode():
         assert isinstance(res.mbc, shapely.geometry.Polygon)
         assert isinstance(res.concave_hull, shapely.geometry.Polygon)
         assert isinstance(res.convex_hull, shapely.geometry.Polygon)
+        assert isinstance(res.centroid, shapely.geometry.Point)
         # assert isinstance(res.clusters, shapely.geometry.) # TODO decide on type of object to represent clusters
 
 
