@@ -205,7 +205,7 @@ def get_clusters(location, location_callback, bandwidth=None):
             continue
         # geoms = geom_methods.get(len(geoms), MultiPoint)(geoms)
         loc = location_callback(locations)
-        geoms = location.multipoint
+        geoms = loc.multipoint
         clusters.append(cluster_named_tuple()(label=cluster_id,
                                               centroid=Point(cluster_centre),
                                               geom=geoms,
