@@ -419,3 +419,17 @@ epub_exclude_files = ['search.html']
 # If false, no index is generated.
 #
 # epub_use_index = True
+
+# Mocking requirements that can't be installed for RTD
+import sys
+from unittest.mock import MagicMock
+
+
+class Mock(MagicMock):
+    @classmethod
+    def __getattr__(cls, name):
+        return Mock()
+
+
+MOCK_MODULES = ['shapely', 'pyproj', 'sklearn', 'scikit-learn', 'numpy']
+sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
