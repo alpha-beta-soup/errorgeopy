@@ -1,0 +1,414 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>errorgeopy.geocoders &#8212; errorgeopy 1.0.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '1.0.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="top" title="errorgeopy 1.0.0 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" />
+   
+  <link rel="stylesheet" href="../../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head>
+  <body role="document">
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for errorgeopy.geocoders</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Contains the `Geocoder` and `GeocoderPool` classes, representing one, and a</span>
+<span class="sd">pool of pre-configured geocoders, respectively.</span>
+
+<span class="sd">`Geocoder` is a very thin piece</span>
+<span class="sd">of wrapping over `geopy.geocoders.base.Geocoder` that primarily just initialises</span>
+<span class="sd">a `geopy.Geocoder` instance by referring to it by name and passing</span>
+<span class="sd">configuration.</span>
+
+<span class="sd">`GeocoderPool` coordinates reading of configuration (file or dictionary) of a</span>
+<span class="sd">suite of geocoders that you should configure, although a small number are</span>
+<span class="sd">available with no configuration. The `GeoCoder` pool then coordinates requests</span>
+<span class="sd">via individual `Geocoder` objects, handling failures and geocoding in parallel</span>
+<span class="sd">for the sake of efficiency. Both forward and backward (&quot;reverse&quot;) geocoding is</span>
+<span class="sd">supported, but note that not all geocoding services exposed via `errorgeopy`</span>
+<span class="sd">support both methods.</span>
+
+<span class="sd">.. moduleauthor Richard Law &lt;richard.m.law@gmail.com&gt;</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">collections</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+<span class="kn">from</span> <span class="nn">multiprocessing.dummy</span> <span class="k">import</span> <span class="n">Pool</span> <span class="k">as</span> <span class="n">ThreadPool</span>
+<span class="kn">from</span> <span class="nn">itertools</span> <span class="k">import</span> <span class="n">repeat</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="k">import</span> <span class="n">OrderedDict</span>
+<span class="kn">import</span> <span class="nn">copy</span>
+
+<span class="kn">import</span> <span class="nn">geopy</span>
+
+<span class="kn">from</span> <span class="nn">errorgeopy.address</span> <span class="k">import</span> <span class="n">Address</span>
+<span class="kn">from</span> <span class="nn">errorgeopy.location</span> <span class="k">import</span> <span class="n">Location</span>
+<span class="kn">from</span> <span class="nn">errorgeopy</span> <span class="k">import</span> <span class="n">utils</span><span class="p">,</span> <span class="n">DEFAULT_GEOCODER_POOL</span>
+
+
+<span class="k">def</span> <span class="nf">_action</span><span class="p">(</span><span class="n">geocoder</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="n">method</span><span class="p">,</span> <span class="n">kwargs</span><span class="o">=</span><span class="p">{},</span> <span class="n">skip_timeouts</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Private function, performs a geocoding action.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        geocoder (geopy.geocoders.base.Geocoder): A geocoder to run a query</span>
+<span class="sd">            against.</span>
+<span class="sd">        query (str, tuple): The address (forward) or location (reverse) you</span>
+<span class="sd">            wish to geocode.</span>
+<span class="sd">        method (str): The name of the method to call on the geocoder (e.g.</span>
+<span class="sd">            &quot;reverse&quot;, &quot;geocode&quot;).</span>
+
+<span class="sd">    Kwargs:</span>
+<span class="sd">        kwargs (dict): Kwargs for the method.</span>
+<span class="sd">        skip_timeouts (bool): If a timeout is encountered, controls whether the</span>
+<span class="sd">            normal exception is raised, or if it should be silently ignored.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">method</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">geocoder</span><span class="p">,</span> <span class="n">method</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">method</span> <span class="ow">and</span> <span class="n">callable</span><span class="p">(</span><span class="n">method</span><span class="p">)</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">method</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">geopy</span><span class="o">.</span><span class="n">exc</span><span class="o">.</span><span class="n">GeocoderTimedOut</span> <span class="k">as</span> <span class="n">timeout</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">skip_timeouts</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">timeout</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">results</span>
+    <span class="k">except</span> <span class="ne">NotImplementedError</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">results</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">result</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">results</span>
+    <span class="n">results</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">result</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="k">else</span> <span class="p">[</span><span class="n">result</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">results</span>
+
+
+<span class="k">def</span> <span class="nf">_geocode</span><span class="p">(</span><span class="n">geocoder</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="n">kwargs</span><span class="o">=</span><span class="p">{},</span> <span class="n">skip_timeouts</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Pickle-able geocoding method that works with any object that implements a</span>
+<span class="sd">    &quot;geocode&quot; method. Given an address, find locations.</span>
+
+<span class="sd">    Notes:</span>
+<span class="sd">        See :code:`_action` function; this just supplies the :code:`method` to</span>
+<span class="sd">        that function (as &quot;geocode&quot;). Therefore geocoder must have a callable</span>
+<span class="sd">        method called &quot;geocode&quot;.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">_action</span><span class="p">(</span><span class="n">geocoder</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="s1">&#39;geocode&#39;</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">,</span> <span class="n">skip_timeouts</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">_reverse</span><span class="p">(</span><span class="n">geocoder</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="n">kwargs</span><span class="o">=</span><span class="p">{},</span> <span class="n">skip_timeouts</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Pickle-able reverse geocoding method that works with any object that</span>
+<span class="sd">    implements a &quot;reverse&quot; method. Given a point, find addresses.</span>
+
+<span class="sd">    Notes:</span>
+<span class="sd">        See :code:`_action` function; this just supplies the :code:`method` to</span>
+<span class="sd">        that function (as &quot;reverse&quot;). Therefore geocoder must have a callable</span>
+<span class="sd">        method called &quot;reverse&quot;.</span>
+
+<span class="sd">    Kwargs:</span>
+<span class="sd">        query (:class:`geopy.point.Point`, list or tuple of (latitude,</span>
+<span class="sd">            longitude), or string as &quot;%(latitude)s, %(longitude)s&quot;)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">_action</span><span class="p">(</span><span class="n">geocoder</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="s1">&#39;reverse&#39;</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">,</span> <span class="n">skip_timeouts</span><span class="p">)</span>
+
+
+<span class="c1"># TODO is it possible to use/inherit a geopy class and extend on the fly?</span>
+<div class="viewcode-block" id="Geocoder"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.geocoders.Geocoder">[docs]</a><span class="k">class</span> <span class="nc">Geocoder</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;A single geocoder exposing access to a geocoding web service with geopy.</span>
+<span class="sd">    Thin wrapping over the geopy.Geocoder set of geocoding services.</span>
+<span class="sd">    Used by `errorgeopy.GeocoderPool` to access the configuration of each</span>
+<span class="sd">    component service. The base `geopy.Geocoder` object can be obtained via the</span>
+<span class="sd">    `geocoder` attribute.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;A single geocoding service with configuration.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            name (str): Name of the geocoding service. Must be a name used by</span>
+<span class="sd">                geopy.</span>
+<span class="sd">            config (dict): Configuration for that geocoder, meeting the geopy</span>
+<span class="sd">                API.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_name</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_geocode_kwargs</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;geocode&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+            <span class="s1">&#39;geocode&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="k">else</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_reverse_kwargs</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;reverse&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+            <span class="s1">&#39;reverse&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="k">else</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_config</span> <span class="o">=</span> <span class="n">config</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">geocoder</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;The `geopy.Geocoder` instance.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">geopy</span><span class="o">.</span><span class="n">get_geocoder_for_service</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">)(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">_config</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;The  string name of the geocoder.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_name</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">config</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;The configuration of the geocoder (less the kwargs for the `geocode`</span>
+<span class="sd">        and `reverse` methods), as a dictionary.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_config</span></div>
+
+
+<div class="viewcode-block" id="GeocoderPool"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.geocoders.GeocoderPool">[docs]</a><span class="k">class</span> <span class="nc">GeocoderPool</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;A &quot;pool&quot; of objects that inherit from</span>
+<span class="sd">    :code:`geopy.geocoders.base.Geocoder`, with configuration specific to each</span>
+<span class="sd">    service. Represents the inputs for geocoding operations that span across</span>
+<span class="sd">    multiple providers. Queries are run in parallel across all configured</span>
+<span class="sd">    geocoding providers, and results are intended to be a composition of</span>
+<span class="sd">    multiple responses from different providers with coherent configuration</span>
+<span class="sd">    (e.g. a universal :code:`country_bias`), although this is not enforced.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">geocoders</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Initialises a pool of geocoders to run queries over in parallel.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            config (dict): A dictionary representing configuration for a suite</span>
+<span class="sd">                of geocoders to be used for geocoding queries.</span>
+<span class="sd">            geocoders: An iterable array of geopy.Geocoder objects that will be</span>
+<span class="sd">                used for geocoding. The `config` options will be used to provide</span>
+<span class="sd">                arguments to the `geocode` and `reverse` methods.</span>
+
+<span class="sd">        Notes:</span>
+<span class="sd">            The structure of the configuration file (GeocoderPool.fromfile) or</span>
+<span class="sd">            dictionary (GeocoderPool.__init__) must match the names of geopy</span>
+<span class="sd">            geocoders, their instantiation options, and method signatures for</span>
+<span class="sd">            `geocode` and `reverse`. See the `geopy documentation`_ for possible</span>
+<span class="sd">            options. Note in particular that for a large number of possible</span>
+<span class="sd">            geocoders, authentication tokens are required. They must be included</span>
+<span class="sd">            in your configuration; so be careful with including this file in</span>
+<span class="sd">            source control or generally sharing it. The default arguments used</span>
+<span class="sd">            by geopy will be used if any keyword arguments are absent in the configuration.</span>
+
+<span class="sd">        .. _`geopy documentation`: http://geopy.readthedocs.io/en/latest/</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_config</span> <span class="o">=</span> <span class="n">config</span>
+        <span class="n">cfg</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_geocoders</span> <span class="o">=</span> <span class="n">DEFAULT_GEOCODER_POOL</span>
+        <span class="k">if</span> <span class="n">config</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+                    <span class="s2">&quot;GeocoderPool configuration must be a dictionary&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_geocoders</span> <span class="o">=</span> <span class="p">[</span><span class="n">Geocoder</span><span class="p">(</span><span class="n">gc</span><span class="p">,</span> <span class="n">cfg</span><span class="p">[</span><span class="n">gc</span><span class="p">])</span> <span class="k">for</span> <span class="n">gc</span> <span class="ow">in</span> <span class="n">cfg</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="n">geocoders</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">geocoders</span><span class="p">,</span> <span class="n">collections</span><span class="o">.</span><span class="n">Iterable</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+                    <span class="s2">&quot;GeocoderPool member geocoders must be an iterable set&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">geopy</span><span class="o">.</span><span class="n">Geocoder</span><span class="p">)</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">geocoders</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+                    <span class="s2">&quot;GeocoderPool member geocoders must be geopy.geocoder geocoder&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_geocoders</span> <span class="o">=</span> <span class="n">geocoders</span>
+
+    <span class="k">def</span> <span class="nf">__unicode__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">g</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_geocoders</span><span class="p">])</span>
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">__unicode__</span><span class="p">()</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">config</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;The (parsed) configuration that will be referred to</span>
+<span class="sd">        when geocoding, as a dictionary.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_config</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">geocoders</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;The list of unique geocoders that will be used when geocoding. Each</span>
+<span class="sd">        member of the array inherits from `geopy.geocoder.base`.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_check_duplicates</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">_check_duplicates</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Checks for duplicate members of the geocoding pool. If any are found,</span>
+<span class="sd">        a warning is emitted and duplicates are removed, leaving only unique</span>
+<span class="sd">        geocoders.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_geocoders</span><span class="p">))</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_geocoders</span><span class="p">):</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                <span class="s2">&quot;Not all supplied geocoders are unique; ignoring duplicate entries&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_geocoders</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_geocoders</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_geocoders</span>
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="GeocoderPool.fromfile"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.geocoders.GeocoderPool.fromfile">[docs]</a>    <span class="k">def</span> <span class="nf">fromfile</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="n">caller</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Instantiates a GeocoderPool from a configuration file. For example,</span>
+<span class="sd">        a `config.yml` file may look like::</span>
+
+<span class="sd">            ArcGIS:</span>
+<span class="sd">              geocode:</span>
+<span class="sd">                exactly_one: true</span>
+<span class="sd">              reverse:</span>
+<span class="sd">                distance: 1000</span>
+<span class="sd">            Nominatim:</span>
+<span class="sd">              country_bias: &quot;New Zealand&quot;</span>
+<span class="sd">              geocode:</span>
+<span class="sd">                addressdetails: true</span>
+<span class="sd">                language: en</span>
+<span class="sd">                exactly_one: false</span>
+<span class="sd">              reverse:</span>
+<span class="sd">                exactly_one: true</span>
+<span class="sd">                language: en</span>
+
+<span class="sd">        Then you could use this classmethod as follows:</span>
+
+<span class="sd">            &gt;&gt;&gt; import yaml</span>
+<span class="sd">            &gt;&gt;&gt; from errorgeopy.geocoders import GeocoderPool</span>
+<span class="sd">            &gt;&gt;&gt; gpool = GeocoderPool.fromfile(&#39;./config.yml&#39;, yaml.load)</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            config (str): path to a configuration file on your system.</span>
+
+<span class="sd">        Kwargs:</span>
+<span class="sd">            caller (function): optional method that will parse the config file</span>
+<span class="sd">            into a Python dictionary with keys matching GeoPy geocoder names,</span>
+<span class="sd">            and those keys holding values that are also dictionaries: function</span>
+<span class="sd">            signatures for `geocode` and `reverse`, and any other</span>
+<span class="sd">            geocoder-specific configuration (e.g. `country_bias` above).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">caller</span><span class="p">:</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">cfg</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">cls</span><span class="p">(</span><span class="n">config</span><span class="o">=</span><span class="n">cfg</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">cfg</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">cls</span><span class="p">(</span><span class="n">config</span><span class="o">=</span><span class="n">caller</span><span class="p">(</span><span class="n">cfg</span><span class="p">))</span></div>
+
+    <span class="k">def</span> <span class="nf">_pool_query</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="n">func</span><span class="p">,</span> <span class="n">attr</span><span class="p">,</span> <span class="n">callback</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Uses :code:`query` to perform :code:`func` with kwargs :code:`attr`</span>
+<span class="sd">        in parallel against all configured geocoders. Performs :code:`callback`</span>
+<span class="sd">        function on the result list of addresses or locations.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            query (str): The query component of a reverse or forward geocode.</span>
+<span class="sd">                func (function): Function to use to obtain an answer.</span>
+<span class="sd">            attr (dict): Keyword arguments to pass to function for each</span>
+<span class="sd">                geocoder.</span>
+<span class="sd">            callback (func): Function to run over iterable result.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Output of `callback`.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">pool</span> <span class="o">=</span> <span class="n">ThreadPool</span><span class="p">()</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">pool</span><span class="o">.</span><span class="n">starmap</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="nb">zip</span><span class="p">([</span><span class="n">g</span><span class="o">.</span><span class="n">geocoder</span> <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">geocoders</span><span class="p">],</span>
+                                         <span class="n">repeat</span><span class="p">(</span><span class="n">query</span><span class="p">),</span>
+                                         <span class="p">[</span><span class="nb">getattr</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">attr</span><span class="p">)</span>
+                                          <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">geocoders</span><span class="p">]))</span>
+        <span class="n">pool</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="n">pool</span><span class="o">.</span><span class="n">join</span><span class="p">()</span>
+        <span class="n">locations</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">location</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">location</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+                <span class="n">locations</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">location</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">locations</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">location</span><span class="p">)</span>
+        <span class="c1"># locations = [item for sublist in results for item in sublist]</span>
+        <span class="k">return</span> <span class="n">callback</span><span class="p">(</span><span class="n">locations</span><span class="p">)</span>
+
+<div class="viewcode-block" id="GeocoderPool.geocode"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.geocoders.GeocoderPool.geocode">[docs]</a>    <span class="k">def</span> <span class="nf">geocode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Forward geocoding: given a string address, return a point location.</span>
+<span class="sd">        ErrorGeoPy does this, and also provides you with ways to interrogate the</span>
+<span class="sd">        spatial error in the result.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            query (str): Address you want to find the location of (with spatial</span>
+<span class="sd">                error).</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            A list of `errorgeopy.address.Address` instances.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pool_query</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">_geocode</span><span class="p">,</span> <span class="s1">&#39;_geocode_kwargs&#39;</span><span class="p">,</span> <span class="n">Location</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="GeocoderPool.reverse"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.geocoders.GeocoderPool.reverse">[docs]</a>    <span class="k">def</span> <span class="nf">reverse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Reverse geocoding: given a point location, returns a string address.</span>
+<span class="sd">        ErrorGeoPy does this, and also provides you with ways to interrogate the</span>
+<span class="sd">        uncertainty in the result.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            query (`geopy.point.Point`, iterable of (lat, lon), or string as</span>
+<span class="sd">            &quot;%(latitude)s, %(longitude)s&quot;): The coordinates for which you wish</span>
+<span class="sd">            to obtain the closest human-readable addresses.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            A list of `errorgeopy.location.Location` instances.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pool_query</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">_reverse</span><span class="p">,</span> <span class="s1">&#39;_reverse_kwargs&#39;</span><span class="p">,</span> <span class="n">Address</span><span class="p">)</span></div></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../index.html">Documentation overview</a><ul>
+  <li><a href="../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2016, Richard Law.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.4.8</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.9</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

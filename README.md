@@ -8,9 +8,11 @@ Python geocoding in a disagreeing world
 
 Wraps [geopy](https://github.com/geopy/geopy) geocoding to expose a simple way to use multiple providers of geocoding services simultaneously (with `multiprocessing`), and provide a report of the ensuing spatial uncertainty in the final location.
 
-0. Configure your desired/allowed geocoding providers (`config.yml`).
-1. Geocode an address using the errorgeopy `geocode` wrapper.
-2. Recieve a multipoint of the geocoded address locations, the [convex hull](http://scipy.github.io/devdocs/generated/scipy.spatial.ConvexHull.html) of the result locations, the [concave hull](http://blog.thehumangeo.com/2014/05/12/drawing-boundaries-in-python/) of the results, various types of centroid, and quantitative measures of spatial agreement across component providers---as well as maintaining access to the original results.
+0. Configure your desired/allowed geocoding providers (YAML or JSON file or Python dictionary).
+1. (Forward) geocode an address using the errorgeopy `geocode` wrapper around geopy's geocoding implementations.
+2. Recieve a multipoint of the geocoded address locations, the [convex hull](http://scipy.github.io/devdocs/generated/scipy.spatial.ConvexHull.html) of the result locations, the [concave hull](http://blog.thehumangeo.com/2014/05/12/drawing-boundaries-in-python/) of the results, various types of centroid, and quantitative measures of spatial agreement across component providers (clustering)—as well as maintaining access to the original results.
+
+Reverse geocoding is also supported (again wrapping geopy), in which case errorgeopy supports: de-duplicating results (with a similarity threshold); extracting results that match a pre-determined bias (e.g. if you only want to retain results that fuzzily match a particular suburb or street name); and identifying the longest common substring amongst candidate addresses.
 
 # Installation
 
@@ -18,12 +20,32 @@ Requires Python 3; only tested with Python 3.4
 
 `pip install errorgeopy`
 
+# Documentation
+
+Using Sphinx.
+
+Initially, with autodoc:
+
+```sh
+cd docs/
+sphinx-apidoc -f -o source/ ../errorgeopy/
+```
+
+Then make any desired changes in `docs/source/` and run:
+
+```sh
+make html
+```
+
+<!-- TODO  make available on ReadTheDocs and leave a link here -->
+
 ## Dependencies
 
 - `geopy`
 - `shapely` (outputs generally are `shapely.geometry` types in geographic coordinates, to get that sweet `__geo_interface__`)
 - `scikit-learn` (cluster detection)
 - `scipy` (for Delaunay triangulation for concave hulls)
+- `pyproj` (so I can work smarter with distances when clustering)
 
 ![Delaunay circumcircles](docs/img/delaunay-circumcircles.png)
 
@@ -79,30 +101,20 @@ Cluster(
   POLYGON ((174.9028656150394 -41.21848335, 174.9028256419384 -41.21929702116113, 174.9027061075986 -41.22010285622418, 174.9025081632008 -41.22089309455698, 174.9022337150578 -41.2216601257324, 174.9018854062553 -41.22239656282091, 174.9014665911974 -41.22309531353078, 174.9009813033021 -41.22374964851068, 174.9004342161571 -41.22435326615709, 174.8998305985107 -41.22490035330207, 174.8991762635308 -41.22538564119736, 174.8984775128209 -41.22580445625525, 174.8977410757324 -41.22615276505778, 174.896974044557 -41.22642721320076, 174.8961838062242 -41.22662515759858, 174.8953779711611 -41.22674469193845, 174.8945643 -41.22678466503934, 174.8937506288389 -41.22674469193845, 174.8929447937758 -41.22662515759858, 174.892154555443 -41.22642721320076, 174.8913875242676 -41.22615276505778, 174.8906510871791 -41.22580445625525, 174.8899523364692 -41.22538564119736, 174.8892980014893 -41.22490035330207, 174.8886943838429 -41.22435326615709, 174.888147296698 -41.22374964851068, 174.8876620088026 -41.22309531353078, 174.8872431937448 -41.22239656282091, 174.8868948849422 -41.2216601257324, 174.8866204367992 -41.22089309455698, 174.8864224924014 -41.22010285622418, 174.8863029580616 -41.21929702116113, 174.8862629849607 -41.21848335, 174.8863029580616 -41.21766967883887, 174.8864224924014 -41.21686384377582, 174.8866204367992 -41.21607360544301, 174.8868948849422 -41.2153065742676, 174.8872431937448 -41.21457013717909, 174.8876620088026 -41.21387138646922, 174.888147296698 -41.21321705148932, 174.8886943838429 -41.21261343384291, 174.8892980014893 -41.21206634669793, 174.8899523364692 -41.21158105880264, 174.8906510871791 -41.21116224374475, 174.8913875242676 -41.21081393494222, 174.892154555443 -41.21053948679923, 174.8929447937758 -41.21034154240142, 174.8937506288389 -41.21022200806155, 174.8945643 -41.21018203496066, 174.8953779711611 -41.21022200806155, 174.8961838062242 -41.21034154240142, 174.896974044557 -41.21053948679923, 174.8977410757324 -41.21081393494222, 174.8984775128209 -41.21116224374475, 174.8991762635308 -41.21158105880264, 174.8998305985107 -41.21206634669793, 174.9004342161571 -41.21261343384291, 174.9009813033021 -41.21321705148932, 174.9014665911974 -41.21387138646922, 174.9018854062553 -41.21457013717909, 174.9022337150578 -41.2153065742676, 174.9025081632008 -41.21607360544301, 174.9027061075986 -41.21686384377582, 174.9028256419384 -41.21766967883887, 174.9028656150394 -41.21848335))
 ```
 
-<!-- TODO find a better example -->
-
 In the above, we have three identified clusters. If you know your input to be well-specified, then you might pick the larger groups, and disregard the cluster with only one member. In this case, we just have a vague input, and so should embrace the vagueness of our result. A single geocoding service with a vague input address would be considerably more constrained than this result.
 
 There are also methods to return a complete mutlipoint geometry, a convex hull, a concave hull of the result set.
 
 Reverse geocoding is also supported, including the ability to "seed" the result with a string that the results are scored against using fuzzy string matching. You can also obtain the longest common substring. (I'm sure there's much more that can be done with matching address string, let me know if you have an idea.)
 
-# Contributing and/or developing
+### Reading material
 
-Any pull requests, issues and comments are welcome. If you want to experiment with errorgeopy with any edits you may make to it, you can install development versions of errorgeopy from the source with, for example:
+- [Why does Gooogle think Vermont is in Morristown?]( http://www.sevendaysvt.com/vermont/wtf-why-does-google-think-vermont-is-in-morristown/Content?oid=3348157)
 
-```sh
-virtualenv -p python3 envname # Make a virtualenv with Python 3
-python setup.py sdist # Make a distribution
-pip install errorgeopy --no-index --find-links file:///path/to/errorgeopy/dist/errorgeopy-X-X-X.tar.gz # Install version X-X-X from the archive you just made
-```
+## Features & release notes
 
-Inside `./demo` there is a Flask application that uses the environment's installed version of errorgeopy for running a demonstration.
-
-## Features
-
-- [x] **alpha** (≤ **v0.3**) and [ ] **beta** (**v0.4**)
-  - [x] Basic premise implementation: wrapping calls to multiple geocoding proiders (anything supported by geopy forward geocoding)
+- [x] **alpha** (≤ **v0.3**) and **beta** (**v0.4**)
+  - [x] Basic premise implementation: wrapping calls to multiple geocoding providers (anything supported by geopy forward geocoding)
   - [x] Available on PiPy
   - [x] Simple geometric operations on candidate addresses
     - Centroids
@@ -116,21 +128,42 @@ Inside `./demo` there is a Flask application that uses the environment's install
   - [x] Unit testing (using `tox` and `pytest`)
   - [x] Centroids of `Location`
   - [x] Implementing `__geo_interface__` for a `Location.cluster` property
-  - [x] Reverse geocoding, with string similarity algorithms as an optional reporting tool to gauge agreement, cluster, and attempt to identify the "most complete" address (http://chairnerd.seatgeek.com/fuzzywuzzy-fuzzy-string-matching-in-python/)
-  - [ ] Cleaner implementation of k-means clustering (better response object for cluster)
-  - [ ] Documentation on readthedocs.io, built from source code
+  - [x] Reverse geocoding, with string similarity algorithms as an optional reporting tool to gauge agreement, cluster, and attempt to identify the "most complete" address with a dependency on [fuzzywuzzy](http://chairnerd.seatgeek.com/fuzzywuzzy-fuzzy-string-matching-in-python/)
+  - [x] Cleaner implementation of clustering
+  - [x] DBSCAN clustering
+  - [x] Documentation on http://readthedocs.io, built from source code
 - [ ] **v1.1**
+  - [ ] Affinity propagation clustering
   - [ ] Hierarchical clustering
-    - Still only a vague idea in my mind
+    - Still only a vague idea in my mind, not a real plan
     - http://varianceexplained.org/r/kmeans-free-lunch/
     - https://en.wikipedia.org/wiki/Hierarchical_clustering
     - http://docs.scipy.org/doc/scipy/reference/cluster.hierarchy.html
     - Method to return a topological [dendrogram](http://docs.scipy.org/doc/scipy/reference/generated/scipy.cluster.hierarchy.dendrogram.html#scipy.cluster.hierarchy.dendrogram) of the clusters (from centre of all, branching to local centres, and finally to the leaves (actual addresses returned from services), as a geographical feature that can readily be plotted on a map
 
-## Testing
+## Testing & developing
 
 Requires [tox](http://tox.readthedocs.io/en/latest/install.html).
 
 ```
 sudo tox
 ```
+
+Developing locally, I like to build with `tox` and then use the environment it creates for running small applications that integrate with other things (e.g. running a Flask app that uses errorgeopy; this updates after testing simply with another `sudo tox`).
+
+
+Initially, you may need to be more forceful for this:
+
+```
+$ sudo tox --recreate -e py34
+$ source .tox/py34/bin/activate
+$(py34) python example/app.py
+```
+
+I highly recommend tox, having never used it before this project. Please file an issue or contact @alpha-beta-soup if you have issues setting anything up.
+
+Any issue, pull request, feature request, or general comment is more than welcome. I really lke Github issues as a method of organisation.
+
+# Acknowledgements
+
+This has been the first Python project that I've really taken care of trying to make generally accessible to the public in a standard manner. I'm rather indebted to Jeff Knupp's blog post, [*Open Sourcing a Python Project the Right Way*](https://jeffknupp.com/blog/2013/08/16/open-sourcing-a-python-project-the-right-way/). Any tips appreciated, I'm looking forward to getting even more under my belt.

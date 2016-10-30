@@ -43,7 +43,7 @@ class Tox(TestCommand):
 install_requires = [
     'Shapely >= 1.5', 'geopy >= 1', 'numpy >= 1', 'scikit-learn >= 0.15',
     'scipy >= 0.17', 'scikit-learn', 'fuzzywuzzy >= 0.11',
-    'python-Levenshtein >= 0.12'
+    'python-Levenshtein >= 0.12', 'pyproj>=1.9'
 ]
 
 config = {
@@ -93,7 +93,7 @@ Intended to work with as many of the providers supported by geopy as you care to
 configure. Without configuration, will use free global provdiders that don't
 require API tokens.
 
-Only supports Python 3.
+Only supports Python 3. Tested with Python 3.4 and 3.5.
 """
 }
 

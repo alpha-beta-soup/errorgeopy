@@ -1,1 +1,2 @@
 v0.0.4, 2016-09-09 -- Reverse geocoding; fuzzy string matching; longest common substring; tests.
+v1.0.0, 2016-10-30 -- Packaging.

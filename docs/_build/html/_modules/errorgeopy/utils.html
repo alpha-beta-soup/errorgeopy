@@ -1,0 +1,488 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>errorgeopy.utils &#8212; errorgeopy 1.0.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '1.0.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="top" title="errorgeopy 1.0.0 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" />
+   
+  <link rel="stylesheet" href="../../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head>
+  <body role="document">
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for errorgeopy.utils</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Utility functions for ErrorGeoPy. Inteded to be private functions, their</span>
+<span class="sd">call signatures are not considered strictly static.</span>
+
+<span class="sd">.. moduleauthor Richard Law &lt;richard.m.law@gmail.com&gt;</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="k">import</span> <span class="n">namedtuple</span>
+<span class="kn">from</span> <span class="nn">functools</span> <span class="k">import</span> <span class="n">partial</span><span class="p">,</span> <span class="n">wraps</span>
+<span class="kn">from</span> <span class="nn">itertools</span> <span class="k">import</span> <span class="n">compress</span>
+<span class="kn">import</span> <span class="nn">inspect</span>
+
+<span class="kn">import</span> <span class="nn">geopy</span>
+<span class="kn">from</span> <span class="nn">geopy.point</span> <span class="k">import</span> <span class="n">Point</span> <span class="k">as</span> <span class="n">GeopyPoint</span>
+<span class="kn">from</span> <span class="nn">shapely.geometry</span> <span class="k">import</span> <span class="n">Point</span><span class="p">,</span> <span class="n">MultiPoint</span><span class="p">,</span> <span class="n">Polygon</span>
+<span class="kn">from</span> <span class="nn">scipy.spatial</span> <span class="k">import</span> <span class="n">Delaunay</span>
+<span class="kn">from</span> <span class="nn">scipy.spatial.distance</span> <span class="k">import</span> <span class="n">pdist</span><span class="p">,</span> <span class="n">squareform</span>
+<span class="kn">from</span> <span class="nn">sklearn.cluster</span> <span class="k">import</span> <span class="n">MeanShift</span><span class="p">,</span> <span class="n">AffinityPropagation</span><span class="p">,</span> <span class="n">DBSCAN</span><span class="p">,</span> <span class="n">estimate_bandwidth</span>
+<span class="kn">from</span> <span class="nn">sklearn.preprocessing</span> <span class="k">import</span> <span class="n">Imputer</span><span class="p">,</span> <span class="n">StandardScaler</span>
+<span class="kn">from</span> <span class="nn">sklearn</span> <span class="k">import</span> <span class="n">metrics</span>
+<span class="kn">from</span> <span class="nn">sklearn.metrics.pairwise</span> <span class="k">import</span> <span class="n">euclidean_distances</span>
+<span class="kn">import</span> <span class="nn">pyproj</span>
+
+<span class="kn">from</span> <span class="nn">errorgeopy.smallestenclosingcircle</span> <span class="k">import</span> <span class="n">make_circle</span>
+
+
+<div class="viewcode-block" id="check_location_type"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.utils.check_location_type">[docs]</a><span class="k">def</span> <span class="nf">check_location_type</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Decorator for checking that the first argument of a function is an array</span>
+<span class="sd">    of geopy.Location objects. Raises ValueError is this condition is not met.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="nd">@wraps</span><span class="p">(</span><span class="n">func</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">inner</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">geopy</span><span class="o">.</span><span class="n">Location</span><span class="p">),</span> <span class="n">args</span><span class="p">[</span><span class="mi">1</span><span class="p">])):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">inner</span></div>
+
+
+<div class="viewcode-block" id="check_addresses_exist"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.utils.check_addresses_exist">[docs]</a><span class="k">def</span> <span class="nf">check_addresses_exist</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Decorator for checking that the first argument of a function has an</span>
+<span class="sd">    addresses property</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="nd">@wraps</span><span class="p">(</span><span class="n">func</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">inner</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">addresses</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">inner</span></div>
+
+
+<div class="viewcode-block" id="geopy_point_to_shapely_point"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.utils.geopy_point_to_shapely_point">[docs]</a><span class="k">def</span> <span class="nf">geopy_point_to_shapely_point</span><span class="p">(</span><span class="n">point</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Converts a geopy.point.Point to a shapely.geometry.Point.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        point (geopy.point.Point)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">point</span><span class="p">,</span> <span class="n">GeopyPoint</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span>
+    <span class="k">return</span> <span class="n">Point</span><span class="p">(</span><span class="n">point</span><span class="o">.</span><span class="n">longitude</span><span class="p">,</span> <span class="n">point</span><span class="o">.</span><span class="n">latitude</span><span class="p">,</span> <span class="n">point</span><span class="o">.</span><span class="n">altitude</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="array_geopy_points_to_shapely_points"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.utils.array_geopy_points_to_shapely_points">[docs]</a><span class="k">def</span> <span class="nf">array_geopy_points_to_shapely_points</span><span class="p">(</span><span class="n">points</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Converts an array of geopy.point.Point objects to an array of</span>
+<span class="sd">    shapely.geometry.Point objects.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        points (sequence of geopy.point.Point objects)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">geopy_point_to_shapely_point</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">points</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="array_geopy_points_to_xyz_tuples"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.utils.array_geopy_points_to_xyz_tuples">[docs]</a><span class="k">def</span> <span class="nf">array_geopy_points_to_xyz_tuples</span><span class="p">(</span><span class="n">points</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Converts an array of geopy.point.Point objects to an array of</span>
+<span class="sd">    (x, y, z) tuples.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        points (sequence of geopy.point.Point objects)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">geopy_point_to_shapely_point</span><span class="p">(</span><span class="n">p</span><span class="p">)</span><span class="o">.</span><span class="n">coords</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">points</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="sq_norm"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.utils.sq_norm">[docs]</a><span class="k">def</span> <span class="nf">sq_norm</span><span class="p">(</span><span class="n">v</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">v</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span></div>
+
+
+<div class="viewcode-block" id="circumcircle"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.utils.circumcircle">[docs]</a><span class="k">def</span> <span class="nf">circumcircle</span><span class="p">(</span><span class="n">points</span><span class="p">,</span> <span class="n">simplex</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Computes the circumcentre and circumradius of a triangle:</span>
+<span class="sd">    https://en.wikipedia.org/wiki/Circumscribed_circle#Circumcircle_equations</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">A</span> <span class="o">=</span> <span class="p">[</span><span class="n">points</span><span class="p">[</span><span class="n">simplex</span><span class="p">[</span><span class="n">k</span><span class="p">]]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)]</span>
+    <span class="n">M</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">]</span> <span class="o">*</span> <span class="mi">4</span><span class="p">]</span> <span class="o">+</span>
+                   <span class="p">[[</span><span class="n">sq_norm</span><span class="p">(</span><span class="n">A</span><span class="p">[</span><span class="n">k</span><span class="p">]),</span> <span class="n">A</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">A</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="mi">1</span><span class="p">],</span> <span class="mf">1.0</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)],</span>
+                   <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+    <span class="n">S</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.5</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">det</span><span class="p">(</span><span class="n">M</span><span class="p">[</span><span class="mi">1</span><span class="p">:,</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">]]),</span>
+                  <span class="o">-</span><span class="mf">0.5</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">det</span><span class="p">(</span><span class="n">M</span><span class="p">[</span><span class="mi">1</span><span class="p">:,</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">]])])</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">det</span><span class="p">(</span><span class="n">M</span><span class="p">[</span><span class="mi">1</span><span class="p">:,</span> <span class="mi">1</span><span class="p">:])</span>
+    <span class="n">b</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">det</span><span class="p">(</span><span class="n">M</span><span class="p">[</span><span class="mi">1</span><span class="p">:,</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]])</span>
+    <span class="n">centre</span><span class="p">,</span> <span class="n">radius</span> <span class="o">=</span> <span class="n">S</span> <span class="o">/</span> <span class="n">a</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">b</span> <span class="o">/</span> <span class="n">a</span> <span class="o">+</span> <span class="n">sq_norm</span><span class="p">(</span><span class="n">S</span><span class="p">)</span> <span class="o">/</span> <span class="n">a</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">centre</span><span class="p">,</span> <span class="n">radius</span></div>
+
+
+<div class="viewcode-block" id="get_alpha_complex"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.utils.get_alpha_complex">[docs]</a><span class="k">def</span> <span class="nf">get_alpha_complex</span><span class="p">(</span><span class="n">alpha</span><span class="p">,</span> <span class="n">points</span><span class="p">,</span> <span class="n">simplexes</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Obtain the alpha shape.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        alpha (float): the paramter for the alpha shape</span>
+<span class="sd">        points: data points</span>
+<span class="sd">        simplexes: the list of indices that define 2-simplexes in the Delaunay</span>
+<span class="sd">            triangulation</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="nb">filter</span><span class="p">(</span><span class="k">lambda</span> <span class="n">simplex</span><span class="p">:</span> <span class="n">circumcircle</span><span class="p">(</span><span class="n">points</span><span class="p">,</span> <span class="n">simplex</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">alpha</span><span class="p">,</span>
+                  <span class="n">simplexes</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="concave_hull"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.utils.concave_hull">[docs]</a><span class="k">def</span> <span class="nf">concave_hull</span><span class="p">(</span><span class="n">points</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">delunay_args</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Computes the concave hull (alpha-shape) of a set of points.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">delunay_args</span> <span class="o">=</span> <span class="n">delunay_args</span> <span class="ow">or</span> <span class="p">{</span>
+        <span class="s1">&#39;furthest_site&#39;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="s1">&#39;incremental&#39;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="s1">&#39;qhull_options&#39;</span><span class="p">:</span> <span class="kc">None</span>
+    <span class="p">}</span>
+    <span class="n">triangulation</span> <span class="o">=</span> <span class="n">Delaunay</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">points</span><span class="p">))</span>
+    <span class="n">alpha_complex</span> <span class="o">=</span> <span class="n">get_alpha_complex</span><span class="p">(</span><span class="n">alpha</span><span class="p">,</span> <span class="n">points</span><span class="p">,</span> <span class="n">triangulation</span><span class="o">.</span><span class="n">simplices</span><span class="p">)</span>
+    <span class="n">X</span><span class="p">,</span> <span class="n">Y</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">triangulation</span><span class="o">.</span><span class="n">simplices</span><span class="p">:</span>
+        <span class="n">X</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">points</span><span class="p">[</span><span class="n">s</span><span class="p">[</span><span class="n">k</span><span class="p">]][</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">]])</span>
+        <span class="n">Y</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">points</span><span class="p">[</span><span class="n">s</span><span class="p">[</span><span class="n">k</span><span class="p">]][</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">]])</span>
+    <span class="n">poly</span> <span class="o">=</span> <span class="n">Polygon</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">X</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">Y</span><span class="p">[</span><span class="mi">0</span><span class="p">])))</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">X</span><span class="p">)):</span>
+        <span class="n">poly</span> <span class="o">=</span> <span class="n">poly</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="n">Polygon</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">X</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">Y</span><span class="p">[</span><span class="n">i</span><span class="p">]))))</span>
+    <span class="k">return</span> <span class="n">poly</span></div>
+
+
+<div class="viewcode-block" id="point_nearest_point"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.utils.point_nearest_point">[docs]</a><span class="k">def</span> <span class="nf">point_nearest_point</span><span class="p">(</span><span class="n">points</span><span class="p">,</span> <span class="n">point</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Returns the shapely.geometry.Point in &lt;points&gt; that is nearest &lt;point&gt;.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">distances</span> <span class="o">=</span> <span class="p">[</span><span class="n">point</span><span class="o">.</span><span class="n">distance</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">points</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">points</span><span class="p">[</span><span class="n">distances</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="n">distances</span><span class="p">))]</span></div>
+
+
+<div class="viewcode-block" id="cross"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.utils.cross">[docs]</a><span class="k">def</span> <span class="nf">cross</span><span class="p">(</span><span class="n">o</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;2D cross product of OA and OB vectors, i.e. z-component of their 3D cross</span>
+<span class="sd">    product.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        A positive value, if OAB makes a counter-clockwise turn,</span>
+<span class="sd">        negative for clockwise turn, and zero if the points are collinear.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">o</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">*</span> <span class="p">(</span><span class="n">b</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">o</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="o">-</span> <span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">o</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="o">*</span> <span class="p">(</span><span class="n">b</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">o</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span></div>
+
+
+<span class="c1"># https://en.wikibooks.org/wiki/Algorithm_Implementation/Geometry/Convex_hull/Monotone_chain#Python</span>
+<div class="viewcode-block" id="convex_hull"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.utils.convex_hull">[docs]</a><span class="k">def</span> <span class="nf">convex_hull</span><span class="p">(</span><span class="n">points</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Computes the convex hull of a set of 2D points.</span>
+
+<span class="sd">    Takes an iterable sequence of hashable (x, y, ...) tuples representing the</span>
+<span class="sd">    points. Only the (x, y) pairs are used, so output is in two-dimensions.</span>
+<span class="sd">    Outputs a shapely.geometry.Polygon representing the convex hull, in</span>
+<span class="sd">    counter-clockwise order, starting from the vertex with the lexicographically</span>
+<span class="sd">    smallest coordinates. Implements Andrew&#39;s monotone chain algorithm.</span>
+<span class="sd">    O(n log n) complexity.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Convert, sort the points lexicographically, and remove duplicates</span>
+    <span class="n">points</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">points</span><span class="p">))</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">points</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">points</span>
+
+    <span class="c1"># Build lower hull</span>
+    <span class="n">lower</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">points</span><span class="p">:</span>
+        <span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="n">lower</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">2</span> <span class="ow">and</span> <span class="n">cross</span><span class="p">(</span><span class="n">lower</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">],</span> <span class="n">lower</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">p</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">lower</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+        <span class="n">lower</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
+
+    <span class="c1"># Build upper hull</span>
+    <span class="n">upper</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="nb">reversed</span><span class="p">(</span><span class="n">points</span><span class="p">):</span>
+        <span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="n">upper</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">2</span> <span class="ow">and</span> <span class="n">cross</span><span class="p">(</span><span class="n">upper</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">],</span> <span class="n">upper</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">p</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">upper</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+        <span class="n">upper</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
+
+    <span class="c1"># Concatenation of the lower and upper hulls gives the convex hull.</span>
+    <span class="c1"># Last point of each list is omitted because it is repeated at the</span>
+    <span class="c1"># beginning of the other list.</span>
+    <span class="c1"># Input to Polygon is a list of vertices in counter-clockwise order,</span>
+    <span class="c1"># starting at the point with the lexicographically smallest coordinates</span>
+    <span class="k">return</span> <span class="n">Polygon</span><span class="p">(</span><span class="n">lower</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">upper</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span></div>
+
+
+<div class="viewcode-block" id="minimum_bounding_circle"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.utils.minimum_bounding_circle">[docs]</a><span class="k">def</span> <span class="nf">minimum_bounding_circle</span><span class="p">(</span><span class="n">points</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Returns the minimum bounding circle of a set of points as a</span>
+<span class="sd">    shapely.geometry.Polygon (64-sided polygon approximating a circle)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># TODO using cartesian coordinates, not geographic</span>
+    <span class="n">mbc</span> <span class="o">=</span> <span class="n">make_circle</span><span class="p">(</span><span class="n">points</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">mbc</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">radius</span> <span class="o">=</span> <span class="n">mbc</span>
+    <span class="k">return</span> <span class="n">Point</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span><span class="o">.</span><span class="n">buffer</span><span class="p">(</span><span class="n">radius</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="cluster_named_tuple"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.utils.cluster_named_tuple">[docs]</a><span class="k">def</span> <span class="nf">cluster_named_tuple</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;Defines a NamedTuple representing a single cluster.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Named tuple with the following properties:</span>
+<span class="sd">            label (int): the id of the cluster</span>
+<span class="sd">            centroid: Point representing the cluster centre</span>
+<span class="sd">            geom (MultiPoint or Point): the cluster members</span>
+<span class="sd">            location (errorgeopy.Location): one cluster from the input set</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">namedtuple</span><span class="p">(</span><span class="s1">&#39;Cluster&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;label&#39;</span><span class="p">,</span> <span class="s1">&#39;centroid&#39;</span><span class="p">,</span> <span class="s1">&#39;location&#39;</span><span class="p">])</span></div>
+
+
+<div class="viewcode-block" id="mean_shift"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.utils.mean_shift">[docs]</a><span class="k">def</span> <span class="nf">mean_shift</span><span class="p">(</span><span class="n">location</span><span class="p">,</span> <span class="n">location_callback</span><span class="p">,</span> <span class="n">bandwidth</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Returns one or more clusters of a set of points, using a mean shift</span>
+<span class="sd">    algorithm.</span>
+<span class="sd">    The result is sorted with the first value being the largest cluster.</span>
+
+<span class="sd">    Kwargs:</span>
+<span class="sd">        bandwidth (float): If bandwidth is None, a value is detected</span>
+<span class="sd">        automatically from the input using estimate_bandwidth.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        A list of NamedTuples (see get_cluster_named_tuple for a definition</span>
+<span class="sd">        of the tuple).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pts</span> <span class="o">=</span> <span class="n">location</span><span class="o">.</span><span class="n">_tuple_points</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">pts</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">pts</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">X</span><span class="p">))</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">X</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">Imputer</span><span class="p">()</span><span class="o">.</span><span class="n">fit_transform</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">bandwidth</span><span class="p">:</span>
+        <span class="n">bandwidth</span> <span class="o">=</span> <span class="n">estimate_bandwidth</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">quantile</span><span class="o">=</span><span class="mf">0.3</span><span class="p">)</span>
+    <span class="n">ms</span> <span class="o">=</span> <span class="n">MeanShift</span><span class="p">(</span><span class="n">bandwidth</span><span class="o">=</span><span class="n">bandwidth</span> <span class="ow">or</span> <span class="kc">None</span><span class="p">,</span> <span class="n">bin_seeding</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+    <span class="n">clusters</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">cluster_id</span><span class="p">,</span> <span class="n">cluster_centre</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">ms</span><span class="o">.</span><span class="n">cluster_centers_</span><span class="p">):</span>
+        <span class="n">locations</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">label</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">ms</span><span class="o">.</span><span class="n">labels_</span><span class="p">):</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">label</span> <span class="o">==</span> <span class="n">cluster_id</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">locations</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">location</span><span class="o">.</span><span class="n">locations</span><span class="p">[</span><span class="n">j</span><span class="p">])</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">locations</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">clusters</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cluster_named_tuple</span><span class="p">()(</span><span class="n">label</span><span class="o">=</span><span class="n">cluster_id</span><span class="p">,</span>
+                                              <span class="n">centroid</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="n">cluster_centre</span><span class="p">),</span>
+                                              <span class="n">location</span><span class="o">=</span><span class="n">location_callback</span><span class="p">(</span>
+                                                  <span class="n">locations</span><span class="p">)))</span>
+    <span class="k">return</span> <span class="n">clusters</span></div>
+
+
+<div class="viewcode-block" id="affinity_propagation"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.utils.affinity_propagation">[docs]</a><span class="k">def</span> <span class="nf">affinity_propagation</span><span class="p">(</span><span class="n">location</span><span class="p">,</span> <span class="n">location_callback</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Returns one or more clusters of a set of points, using an affinity</span>
+<span class="sd">    propagation algorithm.</span>
+<span class="sd">    The result is sorted with the first value being the largest cluster.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        A list of NamedTuples (see get_cluster_named_tuple for a definition</span>
+<span class="sd">        of the tuple).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pts</span> <span class="o">=</span> <span class="n">location</span><span class="o">.</span><span class="n">_tuple_points</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">pts</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">pts</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">X</span><span class="p">))</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">X</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">Imputer</span><span class="p">()</span><span class="o">.</span><span class="n">fit_transform</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+    <span class="n">afkwargs</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;damping&#39;</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">,</span>
+        <span class="s1">&#39;convergence_iter&#39;</span><span class="p">:</span> <span class="mi">15</span><span class="p">,</span>
+        <span class="s1">&#39;max_iter&#39;</span><span class="p">:</span> <span class="mi">200</span><span class="p">,</span>
+        <span class="s1">&#39;copy&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">&#39;preference&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s1">&#39;affinity&#39;</span><span class="p">:</span> <span class="s1">&#39;euclidean&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;verbose&#39;</span><span class="p">:</span> <span class="kc">False</span>
+    <span class="p">}</span>
+    <span class="n">af</span> <span class="o">=</span> <span class="n">AffinityPropagation</span><span class="p">(</span><span class="o">**</span><span class="n">afkwargs</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+    <span class="n">cluster_centers_indices</span> <span class="o">=</span> <span class="n">af</span><span class="o">.</span><span class="n">cluster_centers_indices_</span>
+    <span class="n">clusters</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">cluster_id</span><span class="p">,</span> <span class="n">cluster_centre</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">af</span><span class="o">.</span><span class="n">cluster_centers_</span><span class="p">):</span>
+        <span class="n">locations</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">label</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">af</span><span class="o">.</span><span class="n">labels_</span><span class="p">):</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">label</span> <span class="o">==</span> <span class="n">cluster_id</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">locations</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">location</span><span class="o">.</span><span class="n">locations</span><span class="p">[</span><span class="n">j</span><span class="p">])</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">locations</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">clusters</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cluster_named_tuple</span><span class="p">()(</span><span class="n">label</span><span class="o">=</span><span class="n">cluster_id</span><span class="p">,</span>
+                                              <span class="n">centroid</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="n">cluster_centre</span><span class="p">),</span>
+                                              <span class="n">location</span><span class="o">=</span><span class="n">location_callback</span><span class="p">(</span>
+                                                  <span class="n">locations</span><span class="p">)))</span>
+    <span class="k">return</span> <span class="n">clusters</span></div>
+
+
+<div class="viewcode-block" id="dbscan"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.utils.dbscan">[docs]</a><span class="k">def</span> <span class="nf">dbscan</span><span class="p">(</span><span class="n">location</span><span class="p">,</span> <span class="n">location_callback</span><span class="p">,</span> <span class="n">core_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Returns one or more clusters of a set of points, using a DBSCAN</span>
+<span class="sd">    algorithm.</span>
+<span class="sd">    The result is sorted with the first value being the largest cluster.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        A list of NamedTuples (see get_cluster_named_tuple for a definition</span>
+<span class="sd">        of the tuple).</span>
+
+<span class="sd">    Notes:</span>
+<span class="sd">        This implementation is not strictly correct (improved method explained</span>
+<span class="sd">            here http://geoffboeing.com/2014/08/clustering-to-reduce-spatial-data-set-size/),</span>
+<span class="sd">            but good enough for now.</span>
+<span class="sd">        The centre of a cluster computed with DBSCAN is not meaningful (because</span>
+<span class="sd">            they are irregularly-shaped), so centroids are determined as a point</span>
+<span class="sd">            in the cluster that is nearest the geometric centre of the cluster,</span>
+<span class="sd">            rather than merely the geometric centre.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pts</span> <span class="o">=</span> <span class="p">[</span><span class="n">p</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">2</span><span class="p">]</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">location</span><span class="o">.</span><span class="n">_tuple_points</span><span class="p">()]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">pts</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">pts</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">pts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">pts</span><span class="p">)</span>
+    <span class="c1"># print(pts, pts.shape, pts.reshape(-1, 1), pts.reshape(1, -1))</span>
+    <span class="c1"># if 1 in pts.shape:</span>
+    <span class="c1">#     print(pts.shape, pts)</span>
+    <span class="c1">#     pts = [pts]</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">squareform</span><span class="p">(</span><span class="n">pdist</span><span class="p">(</span><span class="n">pts</span><span class="p">,</span> <span class="n">metric</span><span class="o">=</span><span class="s1">&#39;cityblock&#39;</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">X</span><span class="p">))</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">X</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="c1"># X = np.radians(X</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">StandardScaler</span><span class="p">()</span><span class="o">.</span><span class="n">fit_transform</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+    <span class="n">dbkwargs</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;eps&#39;</span><span class="p">:</span> <span class="n">epsilon</span><span class="p">,</span>
+        <span class="s1">&#39;min_samples&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="s1">&#39;metric&#39;</span><span class="p">:</span> <span class="n">euclidean_distances</span><span class="p">,</span>
+        <span class="c1"># &#39;metric&#39;: &#39;haversine&#39;,</span>
+        <span class="s1">&#39;algorithm&#39;</span><span class="p">:</span> <span class="s1">&#39;brute&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;leaf_size&#39;</span><span class="p">:</span> <span class="kc">None</span>
+    <span class="p">}</span>
+    <span class="n">db</span> <span class="o">=</span> <span class="n">DBSCAN</span><span class="p">(</span><span class="o">**</span><span class="n">dbkwargs</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+    <span class="n">core_samples_mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">db</span><span class="o">.</span><span class="n">labels_</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+    <span class="n">core_samples_mask</span><span class="p">[</span><span class="n">db</span><span class="o">.</span><span class="n">core_sample_indices_</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">labels</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">labels_</span>
+    <span class="n">unique_labels</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span>
+    <span class="n">clusters</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">unique_labels</span><span class="p">:</span>
+        <span class="n">class_member_mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">labels</span> <span class="o">==</span> <span class="n">k</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">k</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+            <span class="c1"># Noise</span>
+            <span class="k">continue</span>
+        <span class="n">_filter</span> <span class="o">=</span> <span class="n">class_member_mask</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">core_only</span> <span class="k">else</span> <span class="n">class_member_mask</span> <span class="o">&amp;</span> <span class="n">core_samples_mask</span>
+        <span class="n">_pts</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="n">Point</span><span class="p">,</span> <span class="n">pts</span><span class="p">[</span><span class="n">_filter</span><span class="p">]))</span>
+        <span class="n">centroid</span> <span class="o">=</span> <span class="n">MultiPoint</span><span class="p">(</span><span class="n">_pts</span><span class="p">)</span><span class="o">.</span><span class="n">centroid</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">pts</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">_pts</span> <span class="o">==</span> <span class="n">centroid</span><span class="p">:</span>
+            <span class="n">centroid</span> <span class="o">=</span> <span class="n">_pts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">get_dist</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">distance</span><span class="p">(</span><span class="n">centroid</span><span class="p">)</span>
+            <span class="n">distances</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="n">get_dist</span><span class="p">,</span> <span class="n">_pts</span><span class="p">))</span>
+            <span class="n">centroid</span> <span class="o">=</span> <span class="n">_pts</span><span class="p">[</span><span class="n">distances</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="n">distances</span><span class="p">))]</span>
+        <span class="n">clusters</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cluster_named_tuple</span><span class="p">()(</span><span class="n">label</span><span class="o">=</span><span class="n">k</span><span class="p">,</span>
+                                              <span class="n">centroid</span><span class="o">=</span><span class="n">centroid</span><span class="p">,</span>
+                                              <span class="n">location</span><span class="o">=</span><span class="n">location_callback</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span>
+                                                  <span class="n">compress</span><span class="p">(</span><span class="n">location</span><span class="o">.</span><span class="n">locations</span><span class="p">,</span>
+                                                           <span class="n">_filter</span><span class="p">)))))</span>
+    <span class="k">return</span> <span class="n">clusters</span></div>
+
+
+<div class="viewcode-block" id="get_clusters"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.utils.get_clusters">[docs]</a><span class="k">def</span> <span class="nf">get_clusters</span><span class="p">(</span><span class="n">location</span><span class="p">,</span> <span class="n">location_callback</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">dbscan</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">method</span><span class="p">(</span><span class="n">location</span><span class="p">,</span> <span class="n">location_callback</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="long_substr"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.utils.long_substr">[docs]</a><span class="k">def</span> <span class="nf">long_substr</span><span class="p">(</span><span class="n">data</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Find the longest substring, given a sequence of strings.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">data</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">data</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">substr</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="mi">0</span><span class="p">])):</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">-</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">j</span> <span class="o">&gt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">substr</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">all</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="n">i</span><span class="p">:</span><span class="n">i</span> <span class="o">+</span> <span class="n">j</span><span class="p">]</span> <span class="ow">in</span> <span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">data</span><span class="p">):</span>
+                <span class="n">substr</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="n">i</span><span class="p">:</span><span class="n">i</span> <span class="o">+</span> <span class="n">j</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">substr</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="get_proj"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.utils.get_proj">[docs]</a><span class="k">def</span> <span class="nf">get_proj</span><span class="p">(</span><span class="n">epsg</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Returns a pyproj partial representing a projedction from WGS84 to</span>
+<span class="sd">    a given projection.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        epsg: EPSG code for the target projection.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">project</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">pyproj</span><span class="o">.</span><span class="n">transform</span><span class="p">,</span>
+                      <span class="n">pyproj</span><span class="o">.</span><span class="n">Proj</span><span class="p">(</span><span class="n">init</span><span class="o">=</span><span class="s1">&#39;EPSG:4326&#39;</span><span class="p">),</span>
+                      <span class="n">pyproj</span><span class="o">.</span><span class="n">Proj</span><span class="p">(</span><span class="n">init</span><span class="o">=</span><span class="s1">&#39;EPSG:</span><span class="si">{epsg}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">epsg</span><span class="o">=</span><span class="n">epsg</span><span class="p">)))</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../index.html">Documentation overview</a><ul>
+  <li><a href="../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2016, Richard Law.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.4.8</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.9</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

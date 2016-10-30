@@ -1,0 +1,280 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>errorgeopy.address &#8212; errorgeopy 1.0.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '1.0.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="top" title="errorgeopy 1.0.0 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" />
+   
+  <link rel="stylesheet" href="../../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head>
+  <body role="document">
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for errorgeopy.address</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Contains the :code:`Address` class, representing a collection of reverse</span>
+<span class="sd">geocoding results. Primarily, this functions as a container for a set of</span>
+<span class="sd">:code:`errorgeopy.Location` objects after a successful reverse geocode, and</span>
+<span class="sd">exposes methods that operate on this set of results, including:</span>
+
+<span class="sd">- de-duplication</span>
+<span class="sd">- extracting the results that best match a pre-expected outcome</span>
+<span class="sd">- finding the longest common substring of candidate addresses</span>
+
+<span class="sd">.. moduleauthor Richard Law &lt;richard.m.law@gmail.com&gt;</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="c1"># import usaddress</span>
+<span class="kn">from</span> <span class="nn">fuzzywuzzy</span> <span class="k">import</span> <span class="n">process</span> <span class="k">as</span> <span class="n">fuzzyprocess</span>
+
+<span class="kn">from</span> <span class="nn">errorgeopy.utils</span> <span class="k">import</span> <span class="p">(</span><span class="n">long_substr</span><span class="p">,</span> <span class="n">check_location_type</span><span class="p">,</span>
+                              <span class="n">check_addresses_exist</span><span class="p">)</span>
+
+<span class="kn">from</span> <span class="nn">functools</span> <span class="k">import</span> <span class="n">wraps</span>
+
+
+<div class="viewcode-block" id="Address"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.address.Address">[docs]</a><span class="k">class</span> <span class="nc">Address</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Represents a collection of parsed reverse geocoder responses (parsed with</span>
+<span class="sd">    geopy). Each member of the :code:`address` property (which is iterable) is a</span>
+<span class="sd">    :code:`geopy.address` object. The raw respones can therefore be obtained</span>
+<span class="sd">    with:</span>
+
+<span class="sd">        &gt;&gt;&gt; [a.raw for a in Address.addresses]</span>
+
+<span class="sd">    :code:`errorgeopy` adds methods that operate on the collection of addresses</span>
+<span class="sd">    that consider the set of addresses as a related set.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        :code:`addresses` (:code:`list`): Collection of reverse geocoding</span>
+<span class="sd">        responses from as many services that were capable of returning a</span>
+<span class="sd">        response to a query.  Each member of the array is a</span>
+<span class="sd">        :code:`geopy.location.Location` object.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="nd">@check_location_type</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">addresses</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_addresses</span> <span class="o">=</span> <span class="n">addresses</span> <span class="ow">or</span> <span class="kc">None</span>
+
+    <span class="k">def</span> <span class="nf">__unicode__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="nb">str</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">addresses</span><span class="p">])</span>
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">__unicode__</span><span class="p">()</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">addresses</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;A list of reverse geocoding results from all configured providers.</span>
+<span class="sd">        The single central property of the Address object.</span>
+
+<span class="sd">        Notes:</span>
+<span class="sd">            Depending on configuration, a provider may return more than one</span>
+<span class="sd">            result for a given query. All results from all providers are</span>
+<span class="sd">            available in this property, in a *flat* (not nested) structure.</span>
+<span class="sd">            The list may be empty if no provider could match an address.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_addresses</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_addresses</span> <span class="k">else</span> <span class="p">[]</span>
+
+    <span class="nd">@check_addresses_exist</span>
+<div class="viewcode-block" id="Address.dedupe"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.address.Address.dedupe">[docs]</a>    <span class="k">def</span> <span class="nf">dedupe</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mi">95</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;dedupe(threshold=95)</span>
+<span class="sd">        Produces a fuzzily de-duplicated version of the candidate addresses,</span>
+<span class="sd">        using :code:`fuzzywuzzy.proccess.dedupe`.</span>
+
+<span class="sd">        Note:</span>
+<span class="sd">            See https://github.com/seatgeek/fuzzywuzzy/blob/master/fuzzywuzzy/process.py</span>
+<span class="sd">            for detail on the deduplication algorithm implementation. This</span>
+<span class="sd">            method does not modify the :code:`Address.addresses`. property.</span>
+
+<span class="sd">        Kwargs:</span>
+<span class="sd">            threshold (int): the numerical value (0,100) point at which you</span>
+<span class="sd">            expect to find duplicates. Defaults to 95 out of 100, which is</span>
+<span class="sd">            higher than the fuzzywuzzy default (70); this higher threshold is</span>
+<span class="sd">            used by defauly since addresses are more sensitive to small changes</span>
+<span class="sd">            (e.g. &quot;250 Main Street&quot; and &quot;150 Main Street&quot; have a small edit</span>
+<span class="sd">            distance when considered as strings, but may have a reasonably large</span>
+<span class="sd">            physical distance when considered as physical addresses).</span>
+<span class="sd">        Returns:</span>
+<span class="sd">            A list of :code:`geopy.location.Location` objects (essentially a</span>
+<span class="sd">            filtered list of the original set).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">fuzzyprocess</span><span class="o">.</span><span class="n">dedupe</span><span class="p">([</span><span class="nb">str</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">addresses</span><span class="p">],</span> <span class="n">threshold</span><span class="p">)</span></div>
+
+    <span class="nd">@check_addresses_exist</span>
+<div class="viewcode-block" id="Address.longest_common_substring"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.address.Address.longest_common_substring">[docs]</a>    <span class="k">def</span> <span class="nf">longest_common_substring</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dedupe</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;longest_common_substring(dedupe=False)</span>
+<span class="sd">        Returns the longest common substring of the reverse geocoded</span>
+<span class="sd">        addresses. Note that if there is no common substring, a string of length</span>
+<span class="sd">        zero is returned. If the longest common substring is whitespace, that is</span>
+<span class="sd">        stripped, and a string of length zero is returned.</span>
+
+<span class="sd">        Kwargs:</span>
+<span class="sd">            dedupe (bool): whether to first perform a deduplication operation on</span>
+<span class="sd">            the set of addresses. Defaults to False.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            str</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">addresses</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">addresses</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">dedupe</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">dedupe</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">long_substr</span><span class="p">([</span><span class="nb">str</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">addresses</span><span class="p">])</span></div>
+
+    <span class="nd">@check_addresses_exist</span>
+<div class="viewcode-block" id="Address.longest_common_sequence"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.address.Address.longest_common_sequence">[docs]</a>    <span class="k">def</span> <span class="nf">longest_common_sequence</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">separator</span><span class="o">=</span><span class="s1">&#39; &#39;</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;longest_common_sequence(separator=&#39;&#39;)</span>
+<span class="sd">        Returns the longest common sequence of the reverse geocoded</span>
+<span class="sd">        addresses... or it would, if I had written this code.</span>
+<span class="sd">        Raises:</span>
+<span class="sd">            NotImplementedError</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># return utils.longest_common_sequence([str(a) for a in self.addresses],</span>
+        <span class="c1">#                                      separator)</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+
+    <span class="nd">@check_addresses_exist</span>
+<div class="viewcode-block" id="Address.regex"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.address.Address.regex">[docs]</a>    <span class="k">def</span> <span class="nf">regex</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;regex()</span>
+<span class="sd">        Returns a regular expression that matches all of the reverse geocoded</span>
+<span class="sd">        addresses... well it would if I had written this code.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            NotImplementedError</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+
+    <span class="nd">@check_addresses_exist</span>
+<div class="viewcode-block" id="Address.extract"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.address.Address.extract">[docs]</a>    <span class="k">def</span> <span class="nf">extract</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expectation</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">4</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;extract(extraction, limit=4)</span>
+<span class="sd">        Returns the address or addresses within the set of the reverse</span>
+<span class="sd">        geocoded addresses that best match an expected result. Uses fuzzywuzzy</span>
+<span class="sd">        under the hood for matching.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            expectation (str): The string indicating your expected result for a</span>
+<span class="sd">            reverse geocoding operation. It should probably look like an</span>
+<span class="sd">            address. Results are returned in the order that best meets this</span>
+<span class="sd">            expected address.</span>
+
+<span class="sd">        Kwargs:</span>
+<span class="sd">            limit (int): The maximum number of match candidates to retrieve</span>
+<span class="sd">            from fuzzywuzzy. The length of the returned array may be longer, if</span>
+<span class="sd">            the set of addresses has identical addresses that are good matches</span>
+<span class="sd">            for the expected address (i.e. if two geocoders resolve to the same</span>
+<span class="sd">            string address).</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            list. Return value is a list of tuples, where each tuple contains a</span>
+<span class="sd">            geopy Location, and a matching score based on an extension of the</span>
+<span class="sd">            Levenshtien distance between the expectation and the Location&#39;s</span>
+<span class="sd">            address (a higher score is a better match). The algorithm is</span>
+<span class="sd">            implemented by SeatGeek&#39;s fuzzywuzzy, and you can read more here:</span>
+<span class="sd">            http://chairnerd.seatgeek.com/fuzzywuzzy-fuzzy-string-matching-in-python/</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">extractions</span> <span class="o">=</span> <span class="n">fuzzyprocess</span><span class="o">.</span><span class="n">extractBests</span><span class="p">(</span>
+            <span class="n">expectation</span><span class="p">,</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">addresses</span><span class="p">],</span>
+            <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">extraction</span> <span class="ow">in</span> <span class="n">extractions</span><span class="p">:</span>
+            <span class="n">result</span><span class="o">.</span><span class="n">extend</span><span class="p">([(</span><span class="n">x</span><span class="p">,</span> <span class="n">extraction</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">addresses</span>
+                           <span class="k">if</span> <span class="nb">str</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">==</span> <span class="n">extraction</span><span class="p">[</span><span class="mi">0</span><span class="p">]])</span>
+        <span class="k">return</span> <span class="n">result</span></div>
+
+    <span class="nd">@check_addresses_exist</span>
+<div class="viewcode-block" id="Address.parse"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.address.Address.parse">[docs]</a>    <span class="k">def</span> <span class="nf">parse</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;parse()</span>
+<span class="sd">        Raises:</span>
+<span class="sd">            NotImplementedError</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># return [usaddress.parse(str(a)) for a in self.addresses]</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+
+    <span class="nd">@check_addresses_exist</span>
+<div class="viewcode-block" id="Address.tag"><a class="viewcode-back" href="../../errorgeopy.html#errorgeopy.address.Address.tag">[docs]</a>    <span class="k">def</span> <span class="nf">tag</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">summarise</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;tag(summarise=True)</span>
+<span class="sd">        Raises:</span>
+<span class="sd">            NotImplementedError</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># tagged_addresses = [usaddress.tag(str(a)) for a in self.addresses]</span>
+        <span class="c1"># if not summarise:</span>
+        <span class="c1">#     return tags</span>
+        <span class="c1"># summarised_tags = OrderedDict()</span>
+        <span class="c1"># for address in tagged_addresses[0]:</span>
+        <span class="c1">#     for k, v in address.items():</span>
+        <span class="c1">#         if k not in summarised_tags:</span>
+        <span class="c1">#             summarised_tags[k] = set([v])</span>
+        <span class="c1">#         else:</span>
+        <span class="c1">#             summarised_tags[k] = summarised_tags[k].add(v)</span>
+        <span class="c1"># return summarised_tags, set([a[1] for a in tagged_addresses])</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../index.html">Documentation overview</a><ul>
+  <li><a href="../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2016, Richard Law.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.4.8</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.9</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

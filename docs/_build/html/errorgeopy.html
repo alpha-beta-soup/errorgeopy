@@ -1,0 +1,538 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>errorgeopy package &#8212; errorgeopy 1.0.0 documentation</title>
+    
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '1.0.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="top" title="errorgeopy 1.0.0 documentation" href="index.html" />
+    <link rel="prev" title="Welcome to errorgeopy’s documentation!" href="index.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head>
+  <body role="document">
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="errorgeopy-package">
+<h1>errorgeopy package<a class="headerlink" href="#errorgeopy-package" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Permalink to this headline">¶</a></h2>
+</div>
+<div class="section" id="module-errorgeopy.address">
+<span id="errorgeopy-address-module"></span><h2>errorgeopy.address module<a class="headerlink" href="#module-errorgeopy.address" title="Permalink to this headline">¶</a></h2>
+<p>Contains the <code class="code docutils literal"><span class="pre">Address</span></code> class, representing a collection of reverse
+geocoding results. Primarily, this functions as a container for a set of
+<code class="code docutils literal"><span class="pre">errorgeopy.Location</span></code> objects after a successful reverse geocode, and
+exposes methods that operate on this set of results, including:</p>
+<ul class="simple">
+<li>de-duplication</li>
+<li>extracting the results that best match a pre-expected outcome</li>
+<li>finding the longest common substring of candidate addresses</li>
+</ul>
+<dl class="class">
+<dt id="errorgeopy.address.Address">
+<em class="property">class </em><code class="descclassname">errorgeopy.address.</code><code class="descname">Address</code><span class="sig-paren">(</span><em>*args</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/errorgeopy/address.html#Address"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#errorgeopy.address.Address" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal"><span class="pre">object</span></code></p>
+<p>Represents a collection of parsed reverse geocoder responses (parsed with
+geopy). Each member of the <code class="code docutils literal"><span class="pre">address</span></code> property (which is iterable) is a
+<code class="code docutils literal"><span class="pre">geopy.address</span></code> object. The raw respones can therefore be obtained
+with:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="p">[</span><span class="n">a</span><span class="o">.</span><span class="n">raw</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">Address</span><span class="o">.</span><span class="n">addresses</span><span class="p">]</span>
+</pre></div>
+</div>
+<p><code class="code docutils literal"><span class="pre">errorgeopy</span></code> adds methods that operate on the collection of addresses
+that consider the set of addresses as a related set.</p>
+<dl class="docutils">
+<dt>Attributes:</dt>
+<dd><code class="code docutils literal"><span class="pre">addresses</span></code> (<code class="code docutils literal"><span class="pre">list</span></code>): Collection of reverse geocoding
+responses from as many services that were capable of returning a
+response to a query.  Each member of the array is a
+<code class="code docutils literal"><span class="pre">geopy.location.Location</span></code> object.</dd>
+</dl>
+<dl class="attribute">
+<dt id="errorgeopy.address.Address.addresses">
+<code class="descname">addresses</code><a class="headerlink" href="#errorgeopy.address.Address.addresses" title="Permalink to this definition">¶</a></dt>
+<dd><p>A list of reverse geocoding results from all configured providers.
+The single central property of the Address object.</p>
+<dl class="docutils">
+<dt>Notes:</dt>
+<dd>Depending on configuration, a provider may return more than one
+result for a given query. All results from all providers are
+available in this property, in a <em>flat</em> (not nested) structure.
+The list may be empty if no provider could match an address.</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="errorgeopy.address.Address.dedupe">
+<code class="descname">dedupe</code><span class="sig-paren">(</span><em>threshold=95</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/errorgeopy/address.html#Address.dedupe"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#errorgeopy.address.Address.dedupe" title="Permalink to this definition">¶</a></dt>
+<dd><p>Produces a fuzzily de-duplicated version of the candidate addresses,
+using <code class="code docutils literal"><span class="pre">fuzzywuzzy.proccess.dedupe</span></code>.</p>
+<dl class="docutils">
+<dt>Note:</dt>
+<dd>See <a class="reference external" href="https://github.com/seatgeek/fuzzywuzzy/blob/master/fuzzywuzzy/process.py">https://github.com/seatgeek/fuzzywuzzy/blob/master/fuzzywuzzy/process.py</a>
+for detail on the deduplication algorithm implementation. This
+method does not modify the <code class="code docutils literal"><span class="pre">Address.addresses</span></code>. property.</dd>
+<dt>Kwargs:</dt>
+<dd>threshold (int): the numerical value (0,100) point at which you
+expect to find duplicates. Defaults to 95 out of 100, which is
+higher than the fuzzywuzzy default (70); this higher threshold is
+used by defauly since addresses are more sensitive to small changes
+(e.g. &#8220;250 Main Street&#8221; and &#8220;150 Main Street&#8221; have a small edit
+distance when considered as strings, but may have a reasonably large
+physical distance when considered as physical addresses).</dd>
+<dt>Returns:</dt>
+<dd>A list of <code class="code docutils literal"><span class="pre">geopy.location.Location</span></code> objects (essentially a
+filtered list of the original set).</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="errorgeopy.address.Address.extract">
+<code class="descname">extract</code><span class="sig-paren">(</span><em>extraction</em>, <em>limit=4</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/errorgeopy/address.html#Address.extract"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#errorgeopy.address.Address.extract" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the address or addresses within the set of the reverse
+geocoded addresses that best match an expected result. Uses fuzzywuzzy
+under the hood for matching.</p>
+<dl class="docutils">
+<dt>Args:</dt>
+<dd>expectation (str): The string indicating your expected result for a
+reverse geocoding operation. It should probably look like an
+address. Results are returned in the order that best meets this
+expected address.</dd>
+<dt>Kwargs:</dt>
+<dd>limit (int): The maximum number of match candidates to retrieve
+from fuzzywuzzy. The length of the returned array may be longer, if
+the set of addresses has identical addresses that are good matches
+for the expected address (i.e. if two geocoders resolve to the same
+string address).</dd>
+<dt>Returns:</dt>
+<dd>list. Return value is a list of tuples, where each tuple contains a
+geopy Location, and a matching score based on an extension of the
+Levenshtien distance between the expectation and the Location&#8217;s
+address (a higher score is a better match). The algorithm is
+implemented by SeatGeek&#8217;s fuzzywuzzy, and you can read more here:
+<a class="reference external" href="http://chairnerd.seatgeek.com/fuzzywuzzy-fuzzy-string-matching-in-python/">http://chairnerd.seatgeek.com/fuzzywuzzy-fuzzy-string-matching-in-python/</a></dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="errorgeopy.address.Address.longest_common_sequence">
+<code class="descname">longest_common_sequence</code><span class="sig-paren">(</span><em>separator=''</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/errorgeopy/address.html#Address.longest_common_sequence"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#errorgeopy.address.Address.longest_common_sequence" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the longest common sequence of the reverse geocoded
+addresses... or it would, if I had written this code.
+Raises:</p>
+<blockquote>
+<div>NotImplementedError</div></blockquote>
+</dd></dl>
+
+<dl class="method">
+<dt id="errorgeopy.address.Address.longest_common_substring">
+<code class="descname">longest_common_substring</code><span class="sig-paren">(</span><em>dedupe=False</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/errorgeopy/address.html#Address.longest_common_substring"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#errorgeopy.address.Address.longest_common_substring" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the longest common substring of the reverse geocoded
+addresses. Note that if there is no common substring, a string of length
+zero is returned. If the longest common substring is whitespace, that is
+stripped, and a string of length zero is returned.</p>
+<dl class="docutils">
+<dt>Kwargs:</dt>
+<dd>dedupe (bool): whether to first perform a deduplication operation on
+the set of addresses. Defaults to False.</dd>
+<dt>Returns:</dt>
+<dd>str</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="errorgeopy.address.Address.parse">
+<code class="descname">parse</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/errorgeopy/address.html#Address.parse"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#errorgeopy.address.Address.parse" title="Permalink to this definition">¶</a></dt>
+<dd><p>Raises:
+NotImplementedError</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="errorgeopy.address.Address.regex">
+<code class="descname">regex</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/errorgeopy/address.html#Address.regex"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#errorgeopy.address.Address.regex" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns a regular expression that matches all of the reverse geocoded
+addresses... well it would if I had written this code.</p>
+<dl class="docutils">
+<dt>Raises:</dt>
+<dd>NotImplementedError</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="errorgeopy.address.Address.tag">
+<code class="descname">tag</code><span class="sig-paren">(</span><em>summarise=True</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/errorgeopy/address.html#Address.tag"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#errorgeopy.address.Address.tag" title="Permalink to this definition">¶</a></dt>
+<dd><p>Raises:
+NotImplementedError</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-errorgeopy.geocoders">
+<span id="errorgeopy-geocoders-module"></span><h2>errorgeopy.geocoders module<a class="headerlink" href="#module-errorgeopy.geocoders" title="Permalink to this headline">¶</a></h2>
+<p>Contains the <cite>Geocoder</cite> and <cite>GeocoderPool</cite> classes, representing one, and a
+pool of pre-configured geocoders, respectively.</p>
+<p><cite>Geocoder</cite> is a very thin piece
+of wrapping over <cite>geopy.geocoders.base.Geocoder</cite> that primarily just initialises
+a <cite>geopy.Geocoder</cite> instance by referring to it by name and passing
+configuration.</p>
+<p><cite>GeocoderPool</cite> coordinates reading of configuration (file or dictionary) of a
+suite of geocoders that you should configure, although a small number are
+available with no configuration. The <cite>GeoCoder</cite> pool then coordinates requests
+via individual <cite>Geocoder</cite> objects, handling failures and geocoding in parallel
+for the sake of efficiency. Both forward and backward (&#8220;reverse&#8221;) geocoding is
+supported, but note that not all geocoding services exposed via <cite>errorgeopy</cite>
+support both methods.</p>
+<dl class="class">
+<dt id="errorgeopy.geocoders.Geocoder">
+<em class="property">class </em><code class="descclassname">errorgeopy.geocoders.</code><code class="descname">Geocoder</code><span class="sig-paren">(</span><em>name</em>, <em>config</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/errorgeopy/geocoders.html#Geocoder"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#errorgeopy.geocoders.Geocoder" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal"><span class="pre">object</span></code></p>
+<p>A single geocoder exposing access to a geocoding web service with geopy.
+Thin wrapping over the geopy.Geocoder set of geocoding services.
+Used by <cite>errorgeopy.GeocoderPool</cite> to access the configuration of each
+component service. The base <cite>geopy.Geocoder</cite> object can be obtained via the
+<cite>geocoder</cite> attribute.</p>
+<dl class="attribute">
+<dt id="errorgeopy.geocoders.Geocoder.config">
+<code class="descname">config</code><a class="headerlink" href="#errorgeopy.geocoders.Geocoder.config" title="Permalink to this definition">¶</a></dt>
+<dd><p>The configuration of the geocoder (less the kwargs for the <cite>geocode</cite>
+and <cite>reverse</cite> methods), as a dictionary.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="errorgeopy.geocoders.Geocoder.geocoder">
+<code class="descname">geocoder</code><a class="headerlink" href="#errorgeopy.geocoders.Geocoder.geocoder" title="Permalink to this definition">¶</a></dt>
+<dd><p>The <cite>geopy.Geocoder</cite> instance.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="errorgeopy.geocoders.Geocoder.name">
+<code class="descname">name</code><a class="headerlink" href="#errorgeopy.geocoders.Geocoder.name" title="Permalink to this definition">¶</a></dt>
+<dd><p>The  string name of the geocoder.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="errorgeopy.geocoders.GeocoderPool">
+<em class="property">class </em><code class="descclassname">errorgeopy.geocoders.</code><code class="descname">GeocoderPool</code><span class="sig-paren">(</span><em>config=None</em>, <em>geocoders=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/errorgeopy/geocoders.html#GeocoderPool"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#errorgeopy.geocoders.GeocoderPool" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal"><span class="pre">object</span></code></p>
+<p>A &#8220;pool&#8221; of objects that inherit from
+<code class="code docutils literal"><span class="pre">geopy.geocoders.base.Geocoder</span></code>, with configuration specific to each
+service. Represents the inputs for geocoding operations that span across
+multiple providers. Queries are run in parallel across all configured
+geocoding providers, and results are intended to be a composition of
+multiple responses from different providers with coherent configuration
+(e.g. a universal <code class="code docutils literal"><span class="pre">country_bias</span></code>), although this is not enforced.</p>
+<dl class="attribute">
+<dt id="errorgeopy.geocoders.GeocoderPool.config">
+<code class="descname">config</code><a class="headerlink" href="#errorgeopy.geocoders.GeocoderPool.config" title="Permalink to this definition">¶</a></dt>
+<dd><p>The (parsed) configuration that will be referred to
+when geocoding, as a dictionary.</p>
+</dd></dl>
+
+<dl class="classmethod">
+<dt id="errorgeopy.geocoders.GeocoderPool.fromfile">
+<em class="property">classmethod </em><code class="descname">fromfile</code><span class="sig-paren">(</span><em>config</em>, <em>caller=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/errorgeopy/geocoders.html#GeocoderPool.fromfile"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#errorgeopy.geocoders.GeocoderPool.fromfile" title="Permalink to this definition">¶</a></dt>
+<dd><p>Instantiates a GeocoderPool from a configuration file. For example,
+a <cite>config.yml</cite> file may look like:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">ArcGIS</span><span class="p">:</span>
+  <span class="n">geocode</span><span class="p">:</span>
+    <span class="n">exactly_one</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">reverse</span><span class="p">:</span>
+    <span class="n">distance</span><span class="p">:</span> <span class="mi">1000</span>
+<span class="n">Nominatim</span><span class="p">:</span>
+  <span class="n">country_bias</span><span class="p">:</span> <span class="s2">&quot;New Zealand&quot;</span>
+  <span class="n">geocode</span><span class="p">:</span>
+    <span class="n">addressdetails</span><span class="p">:</span> <span class="n">true</span>
+    <span class="n">language</span><span class="p">:</span> <span class="n">en</span>
+    <span class="n">exactly_one</span><span class="p">:</span> <span class="n">false</span>
+  <span class="n">reverse</span><span class="p">:</span>
+    <span class="n">exactly_one</span><span class="p">:</span> <span class="n">true</span>
+    <span class="n">language</span><span class="p">:</span> <span class="n">en</span>
+</pre></div>
+</div>
+<p>Then you could use this classmethod as follows:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">yaml</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">errorgeopy.geocoders</span> <span class="k">import</span> <span class="n">GeocoderPool</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">gpool</span> <span class="o">=</span> <span class="n">GeocoderPool</span><span class="o">.</span><span class="n">fromfile</span><span class="p">(</span><span class="s1">&#39;./config.yml&#39;</span><span class="p">,</span> <span class="n">yaml</span><span class="o">.</span><span class="n">load</span><span class="p">)</span>
+</pre></div>
+</div>
+<dl class="docutils">
+<dt>Args:</dt>
+<dd>config (str): path to a configuration file on your system.</dd>
+<dt>Kwargs:</dt>
+<dd>caller (function): optional method that will parse the config file
+into a Python dictionary with keys matching GeoPy geocoder names,
+and those keys holding values that are also dictionaries: function
+signatures for <cite>geocode</cite> and <cite>reverse</cite>, and any other
+geocoder-specific configuration (e.g. <cite>country_bias</cite> above).</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="errorgeopy.geocoders.GeocoderPool.geocode">
+<code class="descname">geocode</code><span class="sig-paren">(</span><em>query</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/errorgeopy/geocoders.html#GeocoderPool.geocode"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#errorgeopy.geocoders.GeocoderPool.geocode" title="Permalink to this definition">¶</a></dt>
+<dd><p>Forward geocoding: given a string address, return a point location.
+ErrorGeoPy does this, and also provides you with ways to interrogate the
+spatial error in the result.</p>
+<dl class="docutils">
+<dt>Args:</dt>
+<dd><dl class="first last docutils">
+<dt>query (str): Address you want to find the location of (with spatial</dt>
+<dd>error).</dd>
+</dl>
+</dd>
+<dt>Returns:</dt>
+<dd>A list of <cite>errorgeopy.address.Address</cite> instances.</dd>
+</dl>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="errorgeopy.geocoders.GeocoderPool.geocoders">
+<code class="descname">geocoders</code><a class="headerlink" href="#errorgeopy.geocoders.GeocoderPool.geocoders" title="Permalink to this definition">¶</a></dt>
+<dd><p>The list of unique geocoders that will be used when geocoding. Each
+member of the array inherits from <cite>geopy.geocoder.base</cite>.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="errorgeopy.geocoders.GeocoderPool.reverse">
+<code class="descname">reverse</code><span class="sig-paren">(</span><em>query</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/errorgeopy/geocoders.html#GeocoderPool.reverse"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#errorgeopy.geocoders.GeocoderPool.reverse" title="Permalink to this definition">¶</a></dt>
+<dd><p>Reverse geocoding: given a point location, returns a string address.
+ErrorGeoPy does this, and also provides you with ways to interrogate the
+uncertainty in the result.</p>
+<dl class="docutils">
+<dt>Args:</dt>
+<dd>query (<cite>geopy.point.Point</cite>, iterable of (lat, lon), or string as
+&#8220;%(latitude)s, %(longitude)s&#8221;): The coordinates for which you wish
+to obtain the closest human-readable addresses.</dd>
+<dt>Returns:</dt>
+<dd>A list of <cite>errorgeopy.location.Location</cite> instances.</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-errorgeopy.location">
+<span id="errorgeopy-location-module"></span><h2>errorgeopy.location module<a class="headerlink" href="#module-errorgeopy.location" title="Permalink to this headline">¶</a></h2>
+<p>A &#8220;Location&#8221; is a collecion of responses from geocoding services, each one a
+distinct attempt to either find a string address given a point (reverse geocode)
+or an attempt to find a point that best matches a string address (forward
+geocode). A Location is a collection, because fundamentally <em>ErrorGeoPy</em> is
+oriented to working across providers, and considering all of their results as a
+related set of responses.</p>
+<p>A &#8220;LocationClusters&#8221; object, also defined here, is also a collection of
+addresses. but is slightly less abstract in that the members of the collection
+are organised into clusters, based on some clustering algorithm.</p>
+<p>Heavy use is made of shapely in return values of methods for these classes.</p>
+<dl class="class">
+<dt id="errorgeopy.location.Location">
+<em class="property">class </em><code class="descclassname">errorgeopy.location.</code><code class="descname">Location</code><span class="sig-paren">(</span><em>*args</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/errorgeopy/location.html#Location"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#errorgeopy.location.Location" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal"><span class="pre">object</span></code></p>
+<p>Represents a collection of parsed geocoder responses, each of which
+are geopy.Location objects, representing the results of different
+geocoding services for the same query.</p>
+<dl class="attribute">
+<dt id="errorgeopy.location.Location.addresses">
+<code class="descname">addresses</code><a class="headerlink" href="#errorgeopy.location.Location.addresses" title="Permalink to this definition">¶</a></dt>
+<dd><p>geopy.Location.address properties for all candidate locations as a
+sequence of strings.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="errorgeopy.location.Location.centroid">
+<code class="descname">centroid</code><a class="headerlink" href="#errorgeopy.location.Location.centroid" title="Permalink to this definition">¶</a></dt>
+<dd><p>A shapely.geometry.Point of the centre of all candidate address
+locations (centre of the multipoint).</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="errorgeopy.location.Location.clusters">
+<code class="descname">clusters</code><a class="headerlink" href="#errorgeopy.location.Location.clusters" title="Permalink to this definition">¶</a></dt>
+<dd><p>Clusters that have been identified in the Location&#8217;s candidate
+addresses, as an errorgeopy.location.LocationClusters object.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="errorgeopy.location.Location.concave_hull">
+<code class="descname">concave_hull</code><a class="headerlink" href="#errorgeopy.location.Location.concave_hull" title="Permalink to this definition">¶</a></dt>
+<dd><p>A concave hull of the Location, as a shapely.geometry.Polygon object.
+Needs at least four candidates, or else this property is None.</p>
+<dl class="docutils">
+<dt>Kwargs:</dt>
+<dd>alpha (float): The parameter for the alpha shape</dd>
+</dl>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="errorgeopy.location.Location.convex_hull">
+<code class="descname">convex_hull</code><a class="headerlink" href="#errorgeopy.location.Location.convex_hull" title="Permalink to this definition">¶</a></dt>
+<dd><p>A convex hull of the Location, as a shapely.geometry.Polygon
+object. Needs at least three candidates, or else this property is None.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="errorgeopy.location.Location.locations">
+<code class="descname">locations</code><a class="headerlink" href="#errorgeopy.location.Location.locations" title="Permalink to this definition">¶</a></dt>
+<dd><p>A sequence of geopy.Location objects.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="errorgeopy.location.Location.mbc">
+<code class="descname">mbc</code><a class="headerlink" href="#errorgeopy.location.Location.mbc" title="Permalink to this definition">¶</a></dt>
+<dd><p>A shapely.geometry.Polygon representing the minimum bounding circle
+of the candidate locations.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="errorgeopy.location.Location.most_central_location">
+<code class="descname">most_central_location</code><a class="headerlink" href="#errorgeopy.location.Location.most_central_location" title="Permalink to this definition">¶</a></dt>
+<dd><p>A shapely.geometry.Point representing the geometry of the candidate
+location that is nearest to the geometric centre of all of the candidate
+locations.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="errorgeopy.location.Location.multipoint">
+<code class="descname">multipoint</code><a class="headerlink" href="#errorgeopy.location.Location.multipoint" title="Permalink to this definition">¶</a></dt>
+<dd><p>A shapely.geometry.MultiPoint of the Location members.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="errorgeopy.location.Location.points">
+<code class="descname">points</code><a class="headerlink" href="#errorgeopy.location.Location.points" title="Permalink to this definition">¶</a></dt>
+<dd><p>An array of geopy.Point objects representing the candidate locations
+physical positions. These are geodetic points, with latitude, longitude,
+and altitude (in kilometres, when supported by providers; defaults to 0.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="errorgeopy.location.LocationClusters">
+<em class="property">class </em><code class="descclassname">errorgeopy.location.</code><code class="descname">LocationClusters</code><span class="sig-paren">(</span><em>location</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/errorgeopy/location.html#LocationClusters"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#errorgeopy.location.LocationClusters" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal"><span class="pre">object</span></code></p>
+<p>Represents clusters of addresses identified from an errorgeopy.Location
+object, which itself is one coherent collection of respones from multiple
+geocoding services for the same query.</p>
+<dl class="attribute">
+<dt id="errorgeopy.location.LocationClusters.cluster_centres">
+<code class="descname">cluster_centres</code><a class="headerlink" href="#errorgeopy.location.LocationClusters.cluster_centres" title="Permalink to this definition">¶</a></dt>
+<dd><p>Multipoint of cluster geometric centroids.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="errorgeopy.location.LocationClusters.clusters">
+<code class="descname">clusters</code><a class="headerlink" href="#errorgeopy.location.LocationClusters.clusters" title="Permalink to this definition">¶</a></dt>
+<dd><p>A sequence of clusters identified from the input. May have length 0
+if no clusters can be determined.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="errorgeopy.location.LocationClusters.geometry_collection">
+<code class="descname">geometry_collection</code><a class="headerlink" href="#errorgeopy.location.LocationClusters.geometry_collection" title="Permalink to this definition">¶</a></dt>
+<dd><p>GeometryCollection of clusters as multipoint geometries.</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-errorgeopy">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-errorgeopy" title="Permalink to this headline">¶</a></h2>
+<span class="target" id="module-errorgeopy"></span></div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">errorgeopy package</a><ul>
+<li><a class="reference internal" href="#submodules">Submodules</a></li>
+<li><a class="reference internal" href="#module-errorgeopy.address">errorgeopy.address module</a></li>
+<li><a class="reference internal" href="#module-errorgeopy.geocoders">errorgeopy.geocoders module</a></li>
+<li><a class="reference internal" href="#module-errorgeopy.location">errorgeopy.location module</a></li>
+<li><a class="reference internal" href="#module-errorgeopy">Module contents</a></li>
+</ul>
+</li>
+</ul>
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="index.html" title="previous chapter">Welcome to errorgeopy&#8217;s documentation!</a></li>
+  </ul></li>
+</ul>
+</div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/errorgeopy.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2016, Richard Law.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.4.8</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.9</a>
+      
+      |
+      <a href="_sources/errorgeopy.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

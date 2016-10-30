@@ -7,36 +7,13 @@ import geopy
 import shapely
 
 import errorgeopy.geocoders
-'''
-import yaml
-config = os.path.abspath(os.path.join(
-    os.path.dirname(__file__), '..', 'configuration.yml'))
-g_pool = GeocoderPool.fromfile(config, yaml.load)
-test = '66 Great North Road, Grey Lynn, Auckland, 1021, New Zealand'
-location = g_pool.geocode(test)
-if location:
-    print(location)
-    print(location.convex_hull.wkt)
-    print(location.concave_hull.wkt)
-    print(location.multipoint.wkt)
-    c = location.clusters
-    for cl in c:
-        if not cl['centre'] or not cl['members']: continue
-        print('CENTRE: %s' % cl['centre'].wkt,
-              'MEMBERS: %s' % cl['members'].wkt)
-
-    test = location[0]
-    address = g_pool.reverse((test.latitude, test.longitude))
-    print(address.dedupe())
-    print(address.longest_common_substring())
-    print(address.extract('Great North Grey Lynn 1021'))
-'''
 
 
 @pytest.fixture
 def addresses():
     return (
         '66 Great North Road, Grey Lynn, Auckland, 1021, New Zealand',
+        'Grey Lynn, Auckland, 1021, New Zealand',
         'High Street, Lower Hutt, New Zealand',
         '10 Aurora Street, Petone, Lower Hutt, Wellington',  # Doesn't produce enough for a cluster
         '10 Aurora Street, Petone, Lower Hutt, 5012',  # Doesn't produce enough for a cluster
@@ -49,7 +26,7 @@ def addresses():
 
 @pytest.fixture
 def addresses_reverse():
-    return ((-37.8007774, 174.869645),  # 66 Great North Road
+    return ((-37.8004971, 174.868439),  # Near me!
             (-41.2296258, 174.8828724),  # 10 Aurora Street, Petone, Lower Hutt
             (-41.1945832, 174.9403476),  # High Street, Lower Hutt
             (-41.2910862, 174.7882479),  # Oriental Bay, Wellington
@@ -125,16 +102,30 @@ def test_geocode():
             [isinstance(x, geopy.location.Location) for x in res.locations])
         assert all([isinstance(x, str) for x in res.addresses])
         assert all([isinstance(x, geopy.Point) for x in res.points])
-        assert isinstance(res.multipoint, shapely.geometry.MultiPoint)
-        assert isinstance(res.mbc, shapely.geometry.Polygon) or res.mbc is None
+        assert isinstance(res.multipoint, shapely.geometry.MultiPoint) or (
+            res.multipoint is None and len(res) == 0)
+        assert isinstance(res.mbc, shapely.geometry.Polygon) or (
+            res.mbc is None and len(res) < 2)
         assert isinstance(res.concave_hull, shapely.geometry.Polygon) or (
             res.concave_hull is None and len(res) < 4)
         assert isinstance(res.convex_hull, shapely.geometry.Polygon) or (
             res.convex_hull is None and len(res) < 3)
-        assert isinstance(res.centroid, shapely.geometry.Point)
-        assert isinstance(res.clusters, errorgeopy.location.LocationClusters)
-        assert isinstance(res.clusters.geometry_collection(),
-                          shapely.geometry.GeometryCollection)
+        assert isinstance(
+            res.centroid,
+            shapely.geometry.Point) or (res.centroid is None and len(res) == 0)
+        assert isinstance(res.clusters,
+                          errorgeopy.location.LocationClusters) or (
+                              res.clusters is None and len(res) == 0)
+        assert (res.clusters is None and len(res) == 0) or isinstance(
+            res.clusters.geometry_collection,
+            shapely.geometry.GeometryCollection)
+        assert (res.clusters is None and len(res) == 0) or isinstance(
+            res.clusters.cluster_centres, shapely.geometry.MultiPoint)
+        assert isinstance(
+            res.most_central_location, shapely.geometry.Point) or (
+                res.most_central_location is None and len(res) == 0)
+        assert res.most_central_location in res._shapely_points() or (
+            res.most_central_location is None and len(res) == 0)
 
 
 def test_reverse_geocode():
