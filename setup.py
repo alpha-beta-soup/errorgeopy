@@ -62,7 +62,7 @@ config = {
     'classifiers': [
         "Programming Language :: Python",
         "Programming Language :: Python :: 3 :: Only",
-        "Development Status :: 2 - Pre-Alpha",
+        "Development Status :: 5 - Production/Stable",
         "Environment :: Other Environment", "Intended Audience :: Developers",
         "Intended Audience :: Science/Research", "Natural Language :: English",
         "License :: OSI Approved :: MIT License",
