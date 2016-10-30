@@ -431,5 +431,5 @@ class Mock(MagicMock):
         return Mock()
 
 
-MOCK_MODULES = ['shapely', 'pyproj', 'sklearn', 'scikit-learn', 'numpy']
+MOCK_MODULES = ['Shapely', 'pyproj', 'sklearn', 'scikit-learn', 'numpy']
 sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
