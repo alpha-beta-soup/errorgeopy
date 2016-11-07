@@ -96,7 +96,8 @@ def location_summary(location):
         append(location.concave_hull.__geo_interface__,
                {"label": "concave hull"})
     if location.convex_hull:
-        append(location.convex_hull.__geo_interface__, {"label": "convex hull"})
+        append(location.convex_hull.__geo_interface__,
+               {"label": "convex hull"})
     if location.most_central_location:
         append(location.most_central_location.__geo_interface__,
                {"label": "centre"})
@@ -113,7 +114,8 @@ def location_cluster_summary(location):
         if loc.location.multipoint:
             append(loc.location.multipoint.__geo_interface__,
                    {'label': 'multipoint'})
-        if not loc.location.mbc.is_empty:
+        if (not loc.location.mbc.is_empty) and (
+                loc.location.convex_hull is not None):
             append(loc.location.convex_hull.__geo_interface__, {'label':
                                                                 'convex hull',
                                                                 'rank': rank})
