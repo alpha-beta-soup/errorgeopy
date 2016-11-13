@@ -26,3 +26,4 @@ configuration.yml
 
 # Other
 .wireframe/
+.eggs/

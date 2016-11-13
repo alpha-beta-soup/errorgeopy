@@ -7,7 +7,7 @@ Python geocoding in a disagreeing world
 
    <!-- pandoc --from=markdown --to=rst --output=README.rst README.md -->
 
-|Dependencies| |PyPI version| |Build status|
+|Dependencies| |PyPI version| |Build status| |Coverage Status|
 
 Wraps `geopy <https://github.com/geopy/geopy>`__ geocoding to expose a
 simple way to use multiple providers of geocoding services
@@ -76,6 +76,7 @@ Dependencies
    :alt: Delaunay circumcircles
 
    Delaunay circumcircles
+
 Why?
 ====
 
@@ -254,3 +255,5 @@ belt.
 .. |PyPI version| image:: https://badge.fury.io/py/errorgeopy.svg
    :target: https://pypi.python.org/pypi/errorgeopy
 .. |Build status| image:: https://api.travis-ci.org/alpha-beta-soup/errorgeopy.svg
+.. |Coverage Status| image:: ./coverage.svg
+
