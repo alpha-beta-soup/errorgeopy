@@ -338,7 +338,7 @@ def dbscan(location, location_callback, core_only=False, epsilon=1, **kwargs):
         return None
     X = StandardScaler().fit_transform(X)
     # print(X.ndim)
-    X = np.atleast_2d(X)
+    # X = np.atleast_2d(X)
     dbkwargs = {
         'eps': epsilon,
         'min_samples': 1,
