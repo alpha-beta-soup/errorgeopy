@@ -94,11 +94,14 @@ def circumcircle(points, simplex):
     https://en.wikipedia.org/wiki/Circumscribed_circle#Circumcircle_equations
     """
     A = [points[simplex[k]] for k in range(3)]
-    M = np.asarray([[1.0] * 4] +
-                   [[sq_norm(A[k]), A[k][0], A[k][1], 1.0] for k in range(3)],
-                   dtype=np.float32)
-    S = np.array([0.5 * np.linalg.det(M[1:, [0, 2, 3]]),
-                  -0.5 * np.linalg.det(M[1:, [0, 1, 3]])])
+    M = np.asarray(
+        [[1.0] * 4] +
+        [[sq_norm(A[k]), A[k][0], A[k][1], 1.0] for k in range(3)],
+        dtype=np.float32)
+    S = np.array([
+        0.5 * np.linalg.det(M[1:, [0, 2, 3]]),
+        -0.5 * np.linalg.det(M[1:, [0, 1, 3]])
+    ])
     a = np.linalg.det(M[1:, 1:])
     b = np.linalg.det(M[1:, [0, 1, 2]])
     centre, radius = S / a, np.sqrt(b / a + sq_norm(S) / a**2)
@@ -235,7 +238,7 @@ def mean_shift(location, location_callback, bandwidth=None):
     pts = location._tuple_points()
     if not pts:
         return None
-    X = np.array(pts)
+    X = np.array(pts).reshape((len(pts), len(pts[0])))
     if np.any(np.isnan(X)) or not np.all(np.isfinite(X)):
         return None
     X = Imputer().fit_transform(X)
@@ -271,7 +274,7 @@ def affinity_propagation(location, location_callback):
     pts = location._tuple_points()
     if not pts:
         return None
-    X = np.array(pts)
+    X = np.array(pts).reshape((len(pts), len(pts[0])))
     if np.any(np.isnan(X)) or not np.all(np.isfinite(X)):
         return None
     X = Imputer().fit_transform(X)
@@ -321,19 +324,21 @@ def dbscan(location, location_callback, core_only=False, epsilon=1, **kwargs):
             in the cluster that is nearest the geometric centre of the cluster,
             rather than merely the geometric centre.
     """
+    # TODO pretty sure the output of this is not sorted...
+    # TODO I don't know why, but in tests this raises
+    # errorgeopy/.tox/py35/lib/python3.5/site-packages/sklearn/utils/validation.py:386: DeprecationWarning: Passing 1d arrays as data is deprecated in 0.17 and willraise ValueError in 0.19. Reshape your data either using X.reshape(-1, 1) if your data has a single feature or X.reshape(1, -1) if it contains a single sample.
+    # Even though all methods using 2D arrays
     pts = [p[0:2] for p in location._tuple_points()]
     if not pts or len(pts) == 1:
         return None
     pts = np.array(pts)
-    # print(pts, pts.shape, pts.reshape(-1, 1), pts.reshape(1, -1))
-    # if 1 in pts.shape:
-    #     print(pts.shape, pts)
-    #     pts = [pts]
+    # print(pts.ndim)
     X = squareform(pdist(pts, metric='cityblock'))
     if np.any(np.isnan(X)) or not np.all(np.isfinite(X)):
         return None
-    # X = np.radians(X
     X = StandardScaler().fit_transform(X)
+    # print(X.ndim)
+    X = np.atleast_2d(X)
     dbkwargs = {
         'eps': epsilon,
         'min_samples': 1,
@@ -346,9 +351,8 @@ def dbscan(location, location_callback, core_only=False, epsilon=1, **kwargs):
     core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
     core_samples_mask[db.core_sample_indices_] = True
     labels = db.labels_
-    unique_labels = set(labels)
     clusters = []
-    for k in unique_labels:
+    for k in set(labels):
         class_member_mask = (labels == k)
         if k == -1:
             # Noise
@@ -362,11 +366,11 @@ def dbscan(location, location_callback, core_only=False, epsilon=1, **kwargs):
             get_dist = lambda x: x.distance(centroid)
             distances = list(map(get_dist, _pts))
             centroid = _pts[distances.index(min(distances))]
-        clusters.append(cluster_named_tuple()(label=k,
-                                              centroid=centroid,
-                                              location=location_callback(list(
-                                                  compress(location.locations,
-                                                           _filter)))))
+        clusters.append(cluster_named_tuple()(
+            label=k,
+            centroid=centroid,
+            location=location_callback(
+                list(compress(location.locations, _filter)))))
     return clusters
 
 
@@ -395,6 +399,7 @@ def get_proj(epsg):
     Args:
         epsg: EPSG code for the target projection.
     """
-    project = partial(pyproj.transform,
-                      pyproj.Proj(init='EPSG:4326'),
-                      pyproj.Proj(init='EPSG:{epsg}'.format(epsg=epsg)))
+    project = partial(
+        pyproj.transform,
+        pyproj.Proj(init='EPSG:4326'),
+        pyproj.Proj(init='EPSG:{epsg}'.format(epsg=epsg)))
