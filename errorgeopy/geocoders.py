@@ -3,7 +3,7 @@ pool of pre-configured geocoders, respectively.
 
 `Geocoder` is a very thin piece
 of wrapping over `geopy.geocoders.base.Geocoder` that primarily just initialises
-a `geopy.Geocoder` instance by referring to it by name and passing
+a `geopy.geocoders.Geocoder` instance by referring to it by name and passing
 configuration.
 
 `GeocoderPool` coordinates reading of configuration (file or dictionary) of a
@@ -97,10 +97,10 @@ def _reverse(geocoder, query, kwargs={}, skip_timeouts=True):
 # TODO is it possible to use/inherit a geopy class and extend on the fly?
 class Geocoder(object):
     """A single geocoder exposing access to a geocoding web service with geopy.
-    Thin wrapping over the geopy.Geocoder set of geocoding services.
+    Thin wrapping over the geopy.geocoders.Geocoder set of geocoding services.
     Used by `errorgeopy.GeocoderPool` to access the configuration of each
-    component service. The base `geopy.Geocoder` object can be obtained via the
-    `geocoder` attribute.
+    component service. The base `geopy.geocoders.Geocoder` object can be
+    obtained via the `geocoder` attribute.
     """
 
     def __init__(self, name, config):
@@ -113,6 +113,7 @@ class Geocoder(object):
                 API.
         """
         self._name = name
+        config = config or {}
         self._geocode_kwargs = config.pop('geocode') if config.get(
             'geocode', None) else {}
         self._reverse_kwargs = config.pop('reverse') if config.get(
@@ -121,7 +122,7 @@ class Geocoder(object):
 
     @property
     def geocoder(self):
-        """The `geopy.Geocoder` instance.
+        """The `geopy.geocoders.Geocoder` instance.
         """
         return geopy.get_geocoder_for_service(self.name)(**self._config)
 
@@ -155,9 +156,10 @@ class GeocoderPool(object):
         Args:
             config (dict): A dictionary representing configuration for a suite
                 of geocoders to be used for geocoding queries.
-            geocoders: An iterable array of geopy.Geocoder objects that will be
-                used for geocoding. The `config` options will be used to provide
-                arguments to the `geocode` and `reverse` methods.
+            geocoders: An iterable array of geopy.geocoders.Geocoder objects
+                that will be used for geocoding. The `config` options will be
+                used to provide arguments to the `geocode` and `reverse`
+                methods.
 
         Notes:
             The structure of the configuration file (GeocoderPool.fromfile) or
@@ -168,26 +170,32 @@ class GeocoderPool(object):
             geocoders, authentication tokens are required. They must be included
             in your configuration; so be careful with including this file in
             source control or generally sharing it. The default arguments used
-            by geopy will be used if any keyword arguments are absent in the configuration.
+            by geopy will be used if any keyword arguments are absent in the
+            configuration.
 
         .. _`geopy documentation`: http://geopy.readthedocs.io/en/latest/
         """
         self._config = config
         cfg = copy.deepcopy(config)
-        self._geocoders = DEFAULT_GEOCODER_POOL
         if config:
             if not isinstance(config, dict):
                 raise TypeError(
                     "GeocoderPool configuration must be a dictionary")
             self._geocoders = [Geocoder(gc, cfg[gc]) for gc in cfg]
-        elif geocoders:
+        else:
+            geocoders = geocoders or DEFAULT_GEOCODER_POOL
             if not isinstance(geocoders, collections.Iterable):
                 raise TypeError(
                     "GeocoderPool member geocoders must be an iterable set")
-            if not all(isinstance(g, geopy.Geocoder) for f in geocoders):
+            if not all(
+                    isinstance(g, geopy.geocoders.base.Geocoder)
+                    for g in geocoders):
                 raise TypeError(
-                    "GeocoderPool member geocoders must be geopy.geocoder geocoder")
-            self._geocoders = geocoders
+                    "GeocoderPool member geocoders must be geopy.geocoder geocoder"
+                )
+            self._geocoders = [
+                Geocoder(type(gc).__name__, None) for gc in geocoders
+            ]
 
     def __unicode__(self):
         return '\n'.join([g.name for g in self._geocoders])
@@ -217,7 +225,8 @@ class GeocoderPool(object):
         '''
         if not len(set(self._geocoders)) == len(self._geocoders):
             warnings.warn(
-                "Not all supplied geocoders are unique; ignoring duplicate entries")
+                "Not all supplied geocoders are unique; ignoring duplicate entries"
+            )
             self._geocoders = set(self._geocoders)
         return self._geocoders
 
@@ -281,10 +290,10 @@ class GeocoderPool(object):
             Output of `callback`.
         """
         pool = ThreadPool()
-        results = pool.starmap(func, zip([g.geocoder for g in self.geocoders],
-                                         repeat(query),
-                                         [getattr(g, attr)
-                                          for g in self.geocoders]))
+        results = pool.starmap(func,
+                               zip([g.geocoder for g in self.geocoders],
+                                   repeat(query),
+                                   [getattr(g, attr) for g in self.geocoders]))
         pool.close()
         pool.join()
         locations = []
