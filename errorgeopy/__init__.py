@@ -6,7 +6,7 @@
 .. moduleauthor:: Richard Law <richard.m.law@gmail.com>
 """
 
-__version__ = '1.0.0'
+__version__ = '1.0.1'
 
 
 def _get_default_pool_members():
